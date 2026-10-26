@@ -12,6 +12,40 @@ import { sessionKeyOf, sessionKeyObject, rkOfRecord, rksOf } from './keys.mjs';
 
 const bySourceKey = ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0);
 
+// One envelope folded into its source (sessions §3): reset and snapshot replace the units,
+// appended and delta add and replace, delta drops `gone`, unchanged does nothing; a vanished
+// source keeps its last units under "kept" and has none under "removed".
+function foldEnvelope(m, e) {
+  const cur = m.get(e.source_key);
+  if (e.source_gone) {
+    m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: e.policy === 'kept' ? new Map(cur?.units ?? []) : new Map() });
+    return;
+  }
+  const c = e.read.continuity;
+  if (!cur || c === 'reset' || c === 'snapshot') {
+    m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: new Map(e.read.units.map((u) => [u.unit_key, u])) });
+  } else if (c === 'appended' || c === 'delta') {
+    for (const u of e.read.units) cur.units.set(u.unit_key, u);
+    for (const k of e.read.gone ?? []) cur.units.delete(k);
+  }
+}
+
+// For each pass: Map(sk -> Map(source_key -> Map(unit_key -> sha256))), the units each source
+// holds after it: what the archive must fold to (spec §4.1, lib/archive.mjs).
+export function expectSources(passes) {
+  const sources = new Map();
+  const out = [];
+  for (const pass of passes) {
+    for (const e of pass) {
+      const sk = sessionKeyOf(sessionKeyObject(e.store, e.session));
+      if (!sources.has(sk)) sources.set(sk, new Map());
+      foldEnvelope(sources.get(sk), e);
+    }
+    out.push(new Map([...sources].map(([sk, m]) => [sk, new Map([...m].map(([src, s]) => [src, new Map([...s.units].map(([uk, u]) => [uk, u.sha256]))]))])));
+  }
+  return out;
+}
+
 // For each pass: Map(sk -> { S, current: Map(rk -> record), removed: Map(rk -> record), live,
 // held }), covering every session seen so far.
 export function expectStates(passes, adapters) {
@@ -25,19 +59,7 @@ export function expectStates(passes, adapters) {
       const sk = sessionKeyOf(S);
       touched.set(sk, S);
       if (!sources.has(sk)) sources.set(sk, new Map());
-      const m = sources.get(sk);
-      const cur = m.get(e.source_key);
-      if (e.source_gone) {
-        m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: e.policy === 'kept' ? new Map(cur?.units ?? []) : new Map() });
-        continue;
-      }
-      const c = e.read.continuity;
-      if (!cur || c === 'reset' || c === 'snapshot') {
-        m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: new Map(e.read.units.map((u) => [u.unit_key, u])) });
-      } else if (c === 'appended' || c === 'delta') {
-        for (const u of e.read.units) cur.units.set(u.unit_key, u);
-        for (const k of e.read.gone ?? []) cur.units.delete(k);
-      }
+      foldEnvelope(sources.get(sk), e);
     }
     for (const [sk, S] of touched) {
       const adapter = adapters.adapterFor(S.harness);

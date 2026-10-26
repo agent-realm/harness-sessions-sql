@@ -1,20 +1,21 @@
 // §8: "Twice is once: ingesting the same envelopes twice gives no duplicate logical rows in any
 // table."
 //
-// Each pass is delivered twice in a row, and then the whole sequence again. After each repeat:
-// - the entity tables and the cursor hold the same logical rows as before it (identity, shas,
-//   removed flag);
+// Each pass is delivered twice in a row: the same pass run again, as §5 repairs a crash ("every
+// step is idempotent"). After each repeat:
+// - the entity tables hold the same logical rows as before it (identity, shas, removed flag), and
+//   the cursor no new row (session_sources, informative: its identities);
 // - session_units gains no unit row and no generation. It may gain read manifests that deliver
 //   nothing new: in a generation it already had, not source_gone, listing only units the
 //   generation already archived with the same sha256, and only gone keys an earlier manifest of
 //   that generation already listed. An `unchanged` read, or a delta read whose position did not
 //   move, cannot be told from a new read by its position, and its manifest replays to no change;
-//   the kit reads "duplicate logical row" as a row that repeats content (SPEC-QUESTIONS.md);
-// - no identity holds two rows once the table is merged (ClickHouse: OPTIMIZE ... FINAL, then
-//   the physical rows grouped by identity).
+//   the kit reads "duplicate logical row" as a row that repeats content (SPEC-QUESTIONS.md).
+// The whole sequence is not delivered again after its last pass: a pass-1 read delivered after
+// pass 2 is a stale read (or a consumer starting over), which only an engine that compares `from`
+// with its cursor can tell apart, and the specification does not say it must (SPEC-QUESTIONS.md).
 
 import { snapshot, diffSnapshots, idOf, readable } from '../lib/state.mjs';
-import { identities } from '../lib/spec.mjs';
 import { ALL_TABLES, sessionKeyOf } from '../lib/keys.mjs';
 import { verdict } from '../lib/result.mjs';
 
@@ -23,10 +24,9 @@ const OTHER = ALL_TABLES.filter((t) => t !== 'session_units');
 export default {
   id: 'twice-is-once',
   title: 'Twice is once',
-  kind: 'engine',
   faults: ['engine:regenerate'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const notes = [];
     let tolerated = 0;
@@ -47,11 +47,7 @@ export default {
         await engine.pass(sc.passes[i]);
         await repeat(`pass ${i + 1} delivered again`, () => engine.pass(sc.passes[i]));
       }
-      await repeat('the whole sequence delivered again', async () => {
-        for (const p of sc.passes) await engine.pass(p);
-      });
-      problems.push(...(await duplicates(ns)).map((d) => `${name}: ${d}`));
-      notes.push(`${name}: ${sc.passes.length} pass(es), each delivered twice, then all again`);
+      notes.push(`${name}: ${sc.passes.length} pass(es), each delivered twice in a row`);
     }
     notes.push(`${tolerated} manifest(s) of repeated reads that deliver nothing new`);
     return verdict(problems, notes);
@@ -84,17 +80,4 @@ function addedUnits(before, after) {
     else tolerated++;
   }
   return { problems, tolerated };
-}
-
-async function duplicates(ns) {
-  const out = [];
-  const { tables } = identities();
-  for (const t of ALL_TABLES) {
-    if (!tables[t]) continue;
-    const cols = tables[t].identity.join(', ');
-    if (ns.profile === 'clickhouse') await ns.exec(`OPTIMIZE TABLE ${ns.t(t)} FINAL`);
-    const rows = await ns.query(`SELECT ${cols}, count(*) AS n FROM ${ns.t(t)} GROUP BY ${cols} HAVING count(*) > 1`);
-    if (rows.length) out.push(`${t}: ${rows.length} identities with more than one row after a merge`);
-  }
-  return out;
 }

@@ -17,10 +17,9 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 're-derive-from-the-archive',
   title: 'Re-derive from the archive',
-  kind: 'engine',
   faults: ['engine:rederive-keep-stale'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('rewind');
     const ns = await ctx.namespace();

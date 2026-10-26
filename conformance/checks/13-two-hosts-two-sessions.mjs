@@ -3,17 +3,20 @@
 //
 // One harness store of each of two fixtures read under two host/v0 values (two synthetic machine
 // ids), at the same harness_path, as a copied data folder is. Every session must be current under
-// both hosts: two session keys per session_id.
+// both hosts, two session keys per session_id, and so must everything it holds: under each host,
+// the session's records in every entity table are exactly what the contract expects for that
+// session key (messages, usage, links, lifecycle; current, with their derived shas).
 
+import { records } from '../lib/state.mjs';
+import { recordProblems } from '../lib/compare.mjs';
 import { verdict } from '../lib/result.mjs';
 
 export default {
   id: 'two-hosts-two-sessions',
   title: 'Two hosts, two sessions',
-  kind: 'engine',
-  faults: ['engine:host-merge'],
+  faults: ['engine:host-merge', 'engine:host-merge-messages'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('twoHosts');
     const ns = await ctx.namespace();
@@ -26,6 +29,10 @@ export default {
       const hosts = new Set(rows.filter((r) => r.harness === harness && r.harness_path === hp && r.session_id === sid && r.incarnation === inc).map((r) => r.host));
       for (const h of sc.hosts) if (!hosts.has(h)) problems.push(`${harness} ${sid}: no current session under the host ${h.slice(0, 8)}…`);
     }
-    return verdict(problems, [`${ids.size} sessions, each under ${sc.hosts.length} hosts`]);
+    const exp = ctx.expect(sc).at(-1);
+    problems.push(...recordProblems(await records(ns), exp).problems);
+    const perHost = sc.hosts.map((h) => [...exp.values()].filter((st) => st.S.host === h).reduce((n, st) => n + st.current.size, 0));
+    if (perHost.some((n) => n === 0)) problems.push('a host has no records in the scenario: the check proves nothing');
+    return verdict(problems, [`${ids.size} sessions, each under ${sc.hosts.length} hosts; ${perHost.join(' and ')} records per host compared in every entity table`]);
   },
 };

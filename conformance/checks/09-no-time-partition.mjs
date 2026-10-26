@@ -5,7 +5,7 @@
 // a time function (ClickHouse partition_key; PostgreSQL pg_partitioned_table), and every `ts`
 // column is Nullable.
 // Engine part: Zed keeps no message time (ts_source `none`): every record the adapter derived with
-// a null ts is stored with a null ts.
+// a null ts, message or lifecycle, is stored with a null ts.
 
 import { ENTITY_TABLES } from '../lib/keys.mjs';
 import { verdict } from '../lib/result.mjs';
@@ -15,10 +15,9 @@ const TIME = /\b(ts|ingested_at|created_at|updated_at|captured_at|committed_at)\
 export default {
   id: 'no-time-partition',
   title: 'No time partition',
-  kind: 'database, engine',
-  faults: ['ddl:partition-by-time', 'ddl:ts-not-null', 'engine:fill-ts'],
+  faults: ['ddl:partition-by-time', 'ddl:ts-not-null', 'engine:fill-ts', 'engine:fill-ts-lifecycle'],
 
-  async run(ctx) {
+  async database(ctx) {
     const problems = [];
     const ns = await ctx.namespace();
     const physical = new Map(ENTITY_TABLES.map((t) => [`${ns.prefix}${t}`, t]));
@@ -38,27 +37,36 @@ export default {
       for (const c of cols) if (c.is_nullable !== 'YES') problems.push(`${c.table_name}.ts is NOT NULL`);
       if (!cols.length) problems.push('no ts column found');
     }
+    return verdict(problems, ["entity tables' partition keys and ts columns read from the catalogue"]);
+  },
 
+  async engine(ctx) {
+    const problems = [];
     let n = 0;
-    await ctx.enginePart(problems, async () => {
-      const sc = ctx.scenario('nullTs');
-      const exp = ctx.expect(sc).at(-1);
-      const ens = await ctx.namespace();
-      const engine = await ctx.engine(ens);
-      for (const p of sc.passes) await engine.pass(p);
-      const parts = await ens.current('session_parts');
-      const byMsg = new Map(parts.map((r) => [`${r.session_id}\u0000${r.message_id}`, r]));
-      for (const st of exp.values()) {
-        for (const r of st.current.values()) {
-          if (r.type !== 'message' || r.ts !== null) continue;
-          n++;
-          const row = byMsg.get(`${r.session_id}\u0000${r.message_id}`);
-          if (!row) problems.push(`${r.message_id}: no current row`);
-          else if (row.ts !== null) problems.push(`${r.message_id}: ts is ${row.ts}, the adapter emitted null`);
-        }
+    const sc = ctx.scenario('nullTs');
+    const exp = ctx.expect(sc).at(-1);
+    const ens = await ctx.namespace();
+    const engine = await ctx.engine(ens);
+    for (const p of sc.passes) await engine.pass(p);
+    const parts = await ens.current('session_parts');
+    const lifecycle = await ens.current('session_lifecycle');
+    const byKey = new Map([
+      ...parts.map((r) => [`message\u0000${r.session_id}\u0000${r.message_id}`, r]),
+      ...lifecycle.map((r) => [`lifecycle\u0000${r.session_id}\u0000${r.lifecycle_id}`, r]),
+    ]);
+    let lc = 0;
+    for (const st of exp.values()) {
+      for (const r of st.current.values()) {
+        if ((r.type !== 'message' && r.type !== 'lifecycle') || r.ts !== null) continue;
+        n++;
+        if (r.type === 'lifecycle') lc++;
+        const id = r.type === 'message' ? r.message_id : r.lifecycle_id;
+        const row = byKey.get(`${r.type}\u0000${r.session_id}\u0000${id}`);
+        if (!row) problems.push(`${r.type} ${id}: no current row`);
+        else if (row.ts !== null) problems.push(`${r.type} ${id}: ts is ${row.ts}, the adapter emitted null`);
       }
-      if (!n) problems.push('no message with a null ts in the scenario: the engine part proves nothing');
-    });
-    return verdict(problems, [`entity tables' partition keys and ts columns read from the catalogue; ${n} null-ts message(s) stored null`]);
+    }
+    if (!n || !lc) problems.push('no message or no lifecycle record with a null ts in the scenario: the engine part proves too little');
+    return verdict(problems, [`${n - lc} null-ts message(s) and ${lc} lifecycle record(s) stored null`]);
   },
 };

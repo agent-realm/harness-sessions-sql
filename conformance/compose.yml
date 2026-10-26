@@ -1,28 +1,33 @@
 # A disposable ClickHouse and PostgreSQL pair for the conformance kit.
 #
-# The credentials below are throwaway values for a test deployment that is created for one
-# run and torn down after it. Never reuse them, and never point the kit at a database that
-# holds data you want to keep: every run creates and drops its own databases.
+# Never point the kit at a database that holds data you want to keep: every run creates and drops
+# namespaces of its own (ClickHouse databases, PostgreSQL schemas).
 #
-# Ports are taken from the environment, so a deployment tool can place the pair anywhere:
-#   CH_HTTP_PORT (default 8123)   ClickHouse HTTP
-#   PG_PORT      (default 5432)   PostgreSQL
-# A test-deploy tool that hands out a block of ports as PORT_BASE, PORT_BASE_1, ... can map
-# them instead (see the comments on each `ports:` entry).
+# Everything can be set from the environment:
+#   SSQL_KIT_PASSWORD  the password of the user `kit` in both servers. Default: the throwaway
+#                      value below, which is public; set one of your own wherever anyone else can
+#                      reach the ports.
+#   SSQL_KIT_BIND      the address the two ports are published on. Default 0.0.0.0, every
+#                      interface, so a pair on a host of its own can be reached through a tunnel;
+#                      on a machine you share, set 127.0.0.1.
+#   CH_HTTP_PORT       ClickHouse HTTP (default 8123)
+#   PG_PORT            PostgreSQL (default 5432)
+# A deployment tool that hands out a block of ports as PORT_BASE, PORT_BASE_1, … is followed
+# where CH_HTTP_PORT and PG_PORT are unset. Such a tool may pass nothing else to the file, which
+# is why the bind address and the password have defaults rather than being required.
 #
 # Then, for example:
-#   SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=kit SSQL_CH_PASSWORD=kit-throwaway \
-#   SSQL_PG_URL=postgres://kit:kit-throwaway@localhost:5432/kit \
+#   SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=kit SSQL_CH_PASSWORD=… \
+#   SSQL_PG_URL=postgres://kit:…@localhost:5432/kit \
 #   node run.mjs
 services:
   clickhouse:
     image: ${CH_IMAGE:-clickhouse/clickhouse-server:26.8}
     environment:
       CLICKHOUSE_USER: kit
-      CLICKHOUSE_PASSWORD: kit-throwaway
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_PASSWORD: ${SSQL_KIT_PASSWORD:-kit-throwaway}
     ports:
-      - "${PORT_BASE:-${CH_HTTP_PORT:-8123}}:8123"
+      - "${SSQL_KIT_BIND:-0.0.0.0}:${CH_HTTP_PORT:-${PORT_BASE:-8123}}:8123"
     ulimits:
       nofile: { soft: 262144, hard: 262144 }
 
@@ -30,7 +35,7 @@ services:
     image: ${PG_IMAGE:-postgres:16}
     environment:
       POSTGRES_USER: kit
-      POSTGRES_PASSWORD: kit-throwaway
+      POSTGRES_PASSWORD: ${SSQL_KIT_PASSWORD:-kit-throwaway}
       POSTGRES_DB: kit
     ports:
-      - "${PORT_BASE_1:-${PG_PORT:-5432}}:5432"
+      - "${SSQL_KIT_BIND:-0.0.0.0}:${PG_PORT:-${PORT_BASE_1:-5432}}:5432"

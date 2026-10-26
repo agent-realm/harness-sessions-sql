@@ -61,6 +61,13 @@ function sqlFilesOf(caseDir) {
 
 const param = (v) => (v && typeof v === 'object' && typeof v.$b64 === 'string' ? Buffer.from(v.$b64, 'base64') : v);
 
+// Every fixture copy not yet removed, so an interrupted run can remove them (run.mjs).
+const liveCopies = new Set();
+export function removeFixtureCopies() {
+  for (const dir of liveCopies) fs.rmSync(dir, { recursive: true, force: true });
+  liveCopies.clear();
+}
+
 export class FixtureStore {
   // `tree`: which folder of the case holds the harness store files (`store`, or `before` for a
   // case that keeps an earlier state beside it). `upto`: build each database from its first
@@ -71,6 +78,7 @@ export class FixtureStore {
     if (!fs.existsSync(this.caseDir)) throw new Error(`no fixture case ${harness}/${caseName}`);
     this.harness = harness;
     this.dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ssql-kit-')));
+    liveCopies.add(this.dir);
     if (fs.existsSync(path.join(this.caseDir, tree))) fs.cpSync(path.join(this.caseDir, tree), this.dir, { recursive: true });
     this.dbs = sqlFilesOf(this.caseDir);
     for (const db of this.dbs) this.buildDb(db, upto ?? db.ops.length);
@@ -165,6 +173,7 @@ export class FixtureStore {
 
   cleanup() {
     fs.rmSync(this.dir, { recursive: true, force: true });
+    liveCopies.delete(this.dir);
   }
 }
 
@@ -175,6 +184,16 @@ export class Reader {
     this.adapter = adapter;
     this.store = store;
     this.cursors = new Map(); // `${session_id}\0${incarnation}\0${source_key}` -> {position, known, session, src}
+  }
+
+  // The reader's cursors, to read again from where they were (a consumer that crashed before it
+  // committed a pass reads that pass again).
+  save() {
+    return new Map([...this.cursors].map(([k, c]) => [k, { ...c, known: new Map(c.known) }]));
+  }
+
+  restore(saved) {
+    this.cursors = new Map([...saved].map(([k, c]) => [k, { ...c, known: new Map(c.known) }]));
   }
 
   // One pass: every listed session (or those `only` accepts), every source, read from its
@@ -332,8 +351,9 @@ export function rewind(adapters) {
 
 // The OpenCode child/task pair (opencode/features): the child states its origin (`at: ''`) and
 // the parent's `task` call states the child, so an engine merges one edge, `stated_on: both`.
-// Pass 2 re-derives the child alone (its title changes). Pass 3 removes both statements: the
-// child's parent_id is cleared and the parent's task part deleted.
+// Pass 2 re-derives the child alone (its title changes). Pass 3 removes the child's statement
+// (its parent_id cleared) while the parent's stands; pass 4 removes the parent's (its task part
+// deleted), so the edge's last supporting statement is gone.
 // The pair is found in the fixture's database, not named here: the one session with a parent, its
 // parent, and the parent's one `task` part, whose callID is the statement's `at`.
 function edgePair(fx, db) {
@@ -354,12 +374,11 @@ export function edges(adapters) {
     const p1 = r.pass();
     fx.sql(db, [["UPDATE session SET title = title || ' (renamed)', time_updated = time_updated + 1 WHERE id = ?", [pair.child]]]);
     const p2 = r.pass({ only: (sid) => sid === pair.child });
-    fx.sql(db, [
-      ['UPDATE session SET parent_id = NULL, time_updated = time_updated + 1 WHERE id = ?', [pair.child]],
-      ['DELETE FROM part WHERE id = ?', [pair.taskPart]],
-    ]);
-    const p3 = r.pass({ only: (sid) => sid === pair.child || sid === pair.origin });
-    return [p1, p2, p3];
+    fx.sql(db, [['UPDATE session SET parent_id = NULL, time_updated = time_updated + 1 WHERE id = ?', [pair.child]]]);
+    const p3 = r.pass({ only: (sid) => sid === pair.child });
+    fx.sql(db, [['DELETE FROM part WHERE id = ?', [pair.taskPart]]]);
+    const p4 = r.pass({ only: (sid) => sid === pair.origin });
+    return [p1, p2, p3, p4];
   });
   const { child, origin, at } = pair;
   return { name: 'edges', passes, pair: { child, origin, at } };
@@ -405,6 +424,41 @@ export function absences(adapters) {
   return { name: 'absences', passes: zipPasses(cc, codex, oc), meta };
 }
 
+// A crash, then other content: pass 2 is read and the engine crashes right after its archive
+// write; before the pass is read again, the harness store changes, so the re-run reads other
+// content from the same positions (OpenCode, a delta source). Before the crash a text part is
+// edited and a message with one part is added; before the re-run the part is edited otherwise
+// and the added message is deleted, so the re-run never sees it. `passes` is what a consumer
+// commits (pass 1, the re-run); `crashed` is the read that was archived and never committed.
+const CRASH_MSG = 'msg_zzzzkitcrash0001';
+const CRASH_PART = 'prt_zzzzkitcrash0001';
+export function crashRerun(adapters) {
+  const out = withFixture(adapters, 'opencode', 'features', {}, (fx) => {
+    const db = path.relative(fx.dir, fx.harnessPath);
+    const [part] = fx.query(db, "SELECT id, message_id, session_id FROM part WHERE json_extract(data, '$.type') = 'text' ORDER BY id LIMIT 1");
+    if (!part) throw new Error('opencode/features: no text part found');
+    const only = (sid) => sid === part.session_id;
+    const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
+    const p1 = r.pass({ only });
+    const saved = r.save();
+    fx.sql(db, [
+      ["UPDATE part SET data = json_set(data, '$.text', ?), time_updated = time_updated + 1 WHERE id = ?", ['edited before the crash', part.id]],
+      ['INSERT INTO message (id, session_id, time_created, time_updated, data) SELECT ?, session_id, time_created + 1, time_updated + 1, data FROM message WHERE id = ?', [CRASH_MSG, part.message_id]],
+      ["INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) SELECT ?, ?, session_id, time_created + 1, time_updated + 1, json_set(data, '$.text', ?) FROM part WHERE id = ?", [CRASH_PART, CRASH_MSG, 'a message the re-run never reads', part.id]],
+    ]);
+    const crashed = r.pass({ only });
+    r.restore(saved);
+    fx.sql(db, [
+      ["UPDATE part SET data = json_set(data, '$.text', ?), time_updated = time_updated + 1 WHERE id = ?", ['edited again before the re-run', part.id]],
+      ['DELETE FROM part WHERE id = ?', [CRASH_PART]],
+      ['DELETE FROM message WHERE id = ?', [CRASH_MSG]],
+    ]);
+    const rerun = r.pass({ only });
+    return { p1, crashed, rerun, meta: { session_id: part.session_id, part: part.id, message: CRASH_MSG } };
+  });
+  return { name: 'crash-rerun', passes: [out.p1, out.rerun], crashed: out.crashed, meta: out.meta };
+}
+
 // No-op reads: pass 2 and pass 4 change nothing (every read `unchanged`); pass 3 appends a line
 // (Claude Code re-appends records verbatim, sessions-model §1 rule 5).
 export function noop(adapters) {
@@ -418,6 +472,22 @@ export function noop(adapters) {
     return [p1, p2, r.pass(), r.pass()];
   });
   return { name: 'noop', passes };
+}
+
+// A tool result that loses its output reference (opencode/features): pass 2 takes the
+// outputPath out of every part that has one, so the adapter's tool_result has no output_ref, and
+// a writer that keeps the old output_ref columns stores a value the record does not have.
+export function refLost(adapters) {
+  const passes = withFixture(adapters, 'opencode', 'features', {}, (fx) => {
+    const db = path.relative(fx.dir, fx.harnessPath);
+    const ids = fx.query(db, "SELECT id FROM part WHERE json_extract(data, '$.state.metadata.outputPath') IS NOT NULL").map((r) => r.id);
+    if (!ids.length) throw new Error('opencode/features: no part with an outputPath');
+    const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
+    const p1 = r.pass();
+    fx.sql(db, ids.map((id) => ["UPDATE part SET data = json_remove(data, '$.state.metadata.outputPath'), time_updated = time_updated + 1 WHERE id = ?", [id]]));
+    return [p1, r.pass()];
+  });
+  return { name: 'ref-lost', passes };
 }
 
 // A partial last line: pass 1 reads the main file with its last line cut in half (held back),

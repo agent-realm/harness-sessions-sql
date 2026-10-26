@@ -14,11 +14,10 @@ import { verdict, skip } from '../lib/result.mjs';
 export default {
   id: 'database-profile-parity',
   title: 'Database profile parity',
-  kind: 'engine',
   both: true,
   faults: ['engine:pg-skew'],
 
-  async run(ctx) {
+  async engine(ctx) {
     if (!ctx.targets.clickhouse || !ctx.targets.postgres) return skip('needs both a ClickHouse and a PostgreSQL target');
     const problems = [];
     const notes = [];

@@ -14,10 +14,9 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'no-op-manifests',
   title: 'No-op manifests',
-  kind: 'engine',
   faults: ['engine:replay-last-manifest'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('noop');
     const live = await ctx.namespace();
@@ -34,7 +33,9 @@ export default {
     const withAll = await ctx.namespace();
     await ctx.copyUnits(live, withAll);
     const without = await ctx.namespace();
-    await ctx.copyUnits(live, without, { exceptSha: noop.map(({ r }) => r.sha256) });
+    await ctx.copyUnits(live, without, { except: noop.map(({ r }) => r) });
+    const [nAll, nWithout] = [(await withAll.present('session_units')).length, (await without.present('session_units')).length];
+    if (nAll - nWithout !== noop.length) problems.push(`the copy without no-op manifests left out ${nAll - nWithout} row(s), not the ${noop.length} no-op manifest(s)`);
     await (await ctx.engine(withAll)).replay();
     await (await ctx.engine(without)).replay();
     for (const d of diffSnapshots(await snapshot(withAll, { tables: ENTITY_TABLES, edgeHistory: false }), await snapshot(without, { tables: ENTITY_TABLES, edgeHistory: false }), { left: 'with no-op manifests', right: 'without' })) problems.push(d);

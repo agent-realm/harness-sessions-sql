@@ -13,10 +13,9 @@ const NEW = { harness: 'kit-new-harness-9', ts_source: 'kit-new-ts-source', enc:
 export default {
   id: 'registries-take-new-values',
   title: 'Registries take new values',
-  kind: 'database',
   faults: ['ddl:registry-enum'],
 
-  async run(ctx) {
+  async database(ctx) {
     const problems = [];
     const ns = await ctx.namespace();
     const rows = syntheticRows(NEW);

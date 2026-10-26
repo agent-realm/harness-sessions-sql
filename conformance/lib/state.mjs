@@ -13,8 +13,8 @@ export const removedOf = (row) => Number(row.removed ?? 0);
 // One string per present row: identity, its shas and its removed flag (entity tables), the
 // identity alone (session_units, session_sources). `edgeHistory: false` leaves removed engine
 // edges out (a replay folds each session alone, so an ended edge's removed version is history it
-// does not rebuild).
-export async function snapshot(ns, { tables = ALL_TABLES, edgeHistory = true, removed = true } = {}) {
+// does not rebuild). `rev: true` adds each row's rev, so any new version of a row shows.
+export async function snapshot(ns, { tables = ALL_TABLES, edgeHistory = true, removed = true, rev = false } = {}) {
   const out = new Map();
   for (const table of tables) {
     const set = new Set();
@@ -25,7 +25,7 @@ export async function snapshot(ns, { tables = ALL_TABLES, edgeHistory = true, re
       }
       if (!removed && removedOf(row)) continue;
       if (!edgeHistory && table === 'session_links' && row.owner === 'engine' && removedOf(row)) continue;
-      set.add([idOf(table, row), row.content_sha, row.message_content_sha ?? '', removedOf(row)].join('\u0001'));
+      set.add([idOf(table, row), row.content_sha, row.message_content_sha ?? '', removedOf(row), ...(rev ? [String(row.rev)] : [])].join('\u0001'));
     }
     out.set(table, set);
   }

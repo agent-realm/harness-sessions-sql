@@ -21,16 +21,19 @@ error that a check proved; the spec text is unchanged.
    writes another one. *The kit checks:* a repeat adds no row to the entity tables or the cursor,
    no unit and no generation to session_units; it may add read manifests that deliver nothing new
    (in an existing generation, not `source_gone`, listing only units the generation already holds
-   and only gone keys already reported). *Question:* is that the meaning, and should §4.1 also let
-   an engine omit the manifest of a read that changes nothing in the fold (not only one that
-   delivers nothing)?
+   and only gone keys already reported). It repeats each pass right after itself, as §5 re-runs a
+   pass, and never delivers an earlier pass after a later one (19). *Question:* is that the
+   meaning, and should §4.1 also let an engine omit the manifest of a read that changes nothing in
+   the fold (not only one that delivers nothing)?
 
 3. **Legacy content_sha, whole rows (§8).** "The conversion of that row gives that line." The kit
    has no memhouse 0.18 input and cannot run an implementation's conversion. *The kit checks* the
    half the database profile owns: each vector's fields, named by the committed DDL order, loaded
    by name into the deployed table, format back in the deployed DDL order into the line and the
-   sha. *Question:* should the engine interface gain a conversion hook (a 0.18-shaped input row in,
-   the converted row out), or is the conversion proved by the implementation's own tests?
+   sha. Both legacy items run the engine's own legacy SQL (`legacySha`); an engine that supplies
+   none has them skipped, never passed on §4.8's expression. *Question:* should the engine
+   interface gain a conversion hook (a 0.18-shaped input row in, the converted row out), or is the
+   conversion proved by the implementation's own tests?
 
 4. **Legacy content_sha on PostgreSQL (§8, §4.8).** §4.8 computes the sha "where the conversion
    runs" and gives the SQL for ClickHouse only, and a conversion reads a ClickHouse database. *The
@@ -50,8 +53,9 @@ error that a check proved; the spec text is unchanged.
 ## Shapes the DDL and the records disagree on
 
 7. **`adapter_ver`.** Both DDL files store an integer (`UInt32`, `integer`); the session adapters
-   state a version string (`0.2.0`). *The reference engine* stores `a.b.c` as a·10⁶ + b·10³ + c.
-   *Question:* should the column be a string, or should §4 fix the encoding?
+   state a version string (`0.2.0`). *The reference engine* stores `a.b.c` as a·10⁶ + b·10³ + c,
+   through one encoder for every table, and refuses a version it cannot encode. *Question:* should
+   the column be a string, or should §4 fix the encoding?
 
 8. **`child_stored`.** Both DDL files make it a non-nullable boolean, default true; an
    origin-side statement may carry `child_stored: null` (OpenCode's `task` part). *The reference
@@ -67,7 +71,9 @@ error that a check proved; the spec text is unchanged.
 10. **The continuity of a manifest (§4.1).** The manifest's `continuity` lists `appended`, `delta`,
     `reset`, `snapshot`. A no-op read returns `unchanged` (sessions §3), and a vanished source has
     no read at all. *The reference engine* writes `unchanged` for the first and `reset` for the
-    second (a vanished source opens a generation). *Question:* which values belong there?
+    second (a vanished source opens a generation). *The kit accepts* those five values in a
+    manifest, and checks every other key of §4.1's object (23). *Question:* which values belong
+    there?
 
 11. **`progress` (§4.1, §4.6, §7).** A manifest carries "the cursor progress after this read", the
     cursor's `ver` is per source, and `rev` is described from the progress "for the session".
@@ -114,8 +120,72 @@ error that a check proved; the spec text is unchanged.
 17. **The crash points.** §8 kills the pass "between the archive write and the cursor write". The
     kit stops it right after the archive write, and at every later point an engine declares
     (`crashPoints`; the reference: after the archive, the entity writes, the removed versions and
-    the edges).
+    the edges). It checks each stop instead of trusting it: the pass's units are archived, the
+    cursor is as it was (so every declared point must lie before the cursor write), and right
+    after the archive write the entity tables are untouched.
 
 18. **The session-adapters package before npm.** `SSQL_ADAPTERS` is a path or a package name; a
     published package does not ship `fixtures/`, which the engine checks need. Until the fixtures
     are published on their own, the kit needs a checkout.
+
+## More points the kit had to settle
+
+19. **Stale re-deliveries and reads from scratch (§5, §8 Twice is once).** "Ingesting the same
+    envelopes twice" can mean a pass re-run right after itself (what §5 does after a crash), or an
+    earlier pass delivered again after a later one. A pass-1 read arriving after pass 2 cannot be
+    told from a consumer that starts over, except by comparing its `from` with the cursor, and §5
+    does not say an engine must; an engine that honours a read from scratch opens a generation for
+    it. *The kit checks* only a pass delivered again right after itself. *The reference engine*
+    ignores a read whose `from` is not its cursor's position, except a read from scratch (`from`
+    null): when it delivers exactly the units the source holds it only moves the position,
+    otherwise it opens a generation. It treats a null `from` and a null stored position as one
+    position. *Question:* must an engine recognise a stale re-delivery, and how does a consumer that
+    starts over say so?
+
+20. **A crash, then other content (§4.1, §5).** A pass that crashes after its archive write leaves
+    manifests the cursor never committed. When its re-run reads other content from the same
+    positions (the harness store changed in between), the re-run's manifest sits beside the
+    crashed one at the same generation and the same `progress`, so §4.1's fold, "in progress
+    order", has no order between them, and a unit the crashed read delivered and the re-run never
+    saw is folded in. *The kit checks* that the re-run gives the state of a clean run of what was
+    committed, live, in its own fold of the archive and in the engine's replay. *The reference
+    engine* gives such a re-run a generation of its own, holding the whole source as the re-run
+    leaves it; a source the crashed pass read and the re-run does not gets its committed units
+    again in a new generation (a source the crashed pass read first, and nobody reads again, stays
+    as the crashed read left it). *Question:* should §4.1 say so, or should a manifest carry the
+    read it records (its `from`, or a read id) so a replay can drop an uncommitted read?
+
+21. **Chunks (§4.1).** A unit "stored in several chunks" is not specified further: how its raw is
+    split, how the chunks are numbered, whether each carries the whole unit's `sha256` and `enc`.
+    *The kit reads* the chunks of one `(source, generation, unit_key, sha256)` as one unit: numbered
+    0, 1, … with one `enc`, their `raw` joined in chunk order is the unit's body. *The reference
+    engine* (option `chunkBytes`) splits a long raw at character boundaries. *Question:* is that the
+    layout, and does a manifest list a chunked unit once?
+
+22. **The DDL a database check tests (§3, §8).** §8's database items test "the database profile's
+    DDL, under the deployment's physical table names", and §3 lets a deployment's DDL differ from
+    `schema/` (a prefix, extra columns, a sort-key prefix). *The kit tests* the DDL the engine makes
+    through `createTables`; without it, it loads `schema/` and reports those rows as a self-check of
+    `schema/`, outside the engine's verdict. *Question:* should §8 say how an implementation hands
+    its DDL to a conformance run (§3's "say so in one place", for example its schema template)?
+
+23. **The manifest's object, strictly (§4.1).** §4.1 lists the keys of a manifest's `raw`, but not
+    whether others may be added, nor the type of `progress`. *The kit requires* `progress` (a
+    non-negative integer, or its decimal string), `continuity` (10's five values), `units` (a list
+    of `[unit_key, sha256]`), `gone`, `source_gone` (a boolean), `policy` only with `source_gone`,
+    a row `continuity` equal to the object's, and `sha256` the sha of `raw`; it accepts other keys.
+    *Question:* may a manifest carry keys of its own (20's read id would be one)?
+
+24. **A part's own source or state equal to its message's (§4.3).** `part_source` and `part_state`
+    hold a part's own values "where they differ from its message's", and `''` "where the part has
+    none of its own". A part whose own value equals its message's has one of its own that does not
+    differ. *The kit accepts* the value or `''` there. *The reference engine* writes the value. No
+    fixture has such a part yet. *Question:* which one?
+
+25. **A merged edge whose `at` came from the statement removed first (§4.5).** A merged edge takes
+    `at` from the parent's call, while the child's statement has none; `at` is in the edge's key.
+    Removing the parent's statement first leaves a child-only edge at `''`: a new key, so the
+    merged edge ends though a supporting statement stands. *The kit checks* that an edge for the
+    pair is still current while either statement stands, and removes the child's statement first.
+    *Question:* does a merged edge keep its key when the statement that gave it `at` is removed?
+

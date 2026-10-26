@@ -4,7 +4,9 @@
 //
 // Database check, with plain SQL and synthetic rows, in every table with a key `host`:
 // - accepted: 32 lowercase hex, and r- + 32 lowercase hex;
-// - rejected: a hostname (my-laptop), uppercase hex, 31 hex digits;
+// - rejected: a hostname (my-laptop), uppercase hex, 31 and 33 hex digits, 32 hex digits with a
+//   prefix (x + 32 hex) or a suffix, r- + 31 and r- + 33 hex digits, and '' (so a check that only
+//   looks for 32 hex digits somewhere, without ^ and $, fails);
 // - in the entity tables, a hostname row whose adapter is `legacy` is accepted (§4.8);
 // - session_links' reference hosts (other_host, child_host, origin_host) follow the same rule,
 //   with '' (the stating session's own harness store) accepted.
@@ -14,14 +16,21 @@ import { syntheticRows, HOST_A } from '../envelopes.mjs';
 import { verdict } from '../lib/result.mjs';
 
 const ENTITY = ['sessions', 'session_parts', 'session_usage', 'session_links', 'session_lifecycle'];
+const WRONG_FORMS = [
+  [`${HOST_A}0`, '33 hex digits'],
+  [`x${HOST_A}`, "32 hex digits after an 'x'"],
+  [`${HOST_A}-x`, '32 hex digits and a suffix'],
+  [`r-${HOST_A.slice(1)}`, 'r- and 31 hex digits'],
+  [`r-${HOST_A}0`, 'r- and 33 hex digits'],
+  ['', "''"],
+];
 
 export default {
   id: 'host-form',
   title: 'Host form',
-  kind: 'database',
-  faults: ['ddl:no-host-check'],
+  faults: ['ddl:no-host-check', 'ddl:host-check-unanchored'],
 
-  async run(ctx) {
+  async database(ctx) {
     const problems = [];
     const ns = await ctx.namespace();
     let n = 0;
@@ -47,6 +56,7 @@ export default {
       await attempt(table, base('my-laptop'), false, "the hostname 'my-laptop'");
       await attempt(table, base(HOST_A.toUpperCase()), false, 'uppercase hex');
       await attempt(table, base(HOST_A.slice(1)), false, '31 hex digits');
+      for (const [v, label] of WRONG_FORMS) await attempt(table, base(v), false, label);
       if (ENTITY.includes(table)) await attempt(table, base('my-laptop', { adapter: 'legacy' }), true, "a legacy row keyed by 'my-laptop'");
     }
     for (const c of ['other_host', 'child_host', 'origin_host']) {
@@ -54,6 +64,7 @@ export default {
       await attempt('session_links', row(''), true, `${c} ''`);
       await attempt('session_links', row(HOST_A), true, `${c} a host/v0 value`);
       await attempt('session_links', row('my-laptop'), false, `${c} 'my-laptop'`);
+      await attempt('session_links', row(`${HOST_A}0`), false, `${c} 33 hex digits`);
       await attempt('session_links', row('my-laptop', { adapter: 'legacy' }), true, `${c} 'my-laptop' on a legacy row`);
     }
     return verdict(problems, [`${n} inserts across ${tables.length} tables`]);

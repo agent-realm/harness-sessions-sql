@@ -7,23 +7,28 @@
 // (delta with gone rows), a Gemini `$rewindTo` (an append-only retraction). After each pass:
 // - the current records equal the pass's `live` (plus a held key's last written version, sessions
 //   §2), with the derived content_sha;
-// - each key that left live is a removed version of its last row, so its adapter-set `state`
-//   stays (the content_sha of a record covers its state), or is gone for a tombstoning engine;
+// - each key that left live is a removed version of its last row, or is gone for a tombstoning
+//   engine. "A full copy of its last row" (principle 3): its shas, and every other column of the
+//   row it had before that pass (its adapter-set `state` included), apart from rev, removed,
+//   is_deleted, ingested_at and writer;
 // - totals over current rows (messages, usage tokens) equal the totals over the live records;
 // - a retracted message stays current with state 'retracted'.
 
-import { records } from '../lib/state.mjs';
+import { records, idOf } from '../lib/state.mjs';
+import { recordProblems } from '../lib/compare.mjs';
+import { norm } from '../lib/db.mjs';
 import { verdict } from '../lib/result.mjs';
 
 const TOKENS = ['input', 'output', 'cache_read', 'cache_write', 'reasoning', 'tool_prompt'];
+// The columns a removed version may change: its version, its flags, when and by whom it was written.
+const VERSION_COLUMNS = new Set(['rev', 'removed', 'is_deleted', 'ingested_at', 'writer']);
 
 export default {
   id: 'removed-equals-not-live',
   title: 'Removed equals not live',
-  kind: 'engine',
-  faults: ['engine:skip-removed'],
+  faults: ['engine:skip-removed', 'engine:removed-rewrite'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('rewind');
     const exp = ctx.expect(sc);
@@ -32,32 +37,35 @@ export default {
     const tomb = (engine.removal ?? 'removed') === 'tombstone';
     let removedSeen = 0;
     let retracted = 0;
+    let copies = 0;
+    let before = new Map();
     for (let i = 0; i < sc.passes.length; i++) {
       await engine.pass(sc.passes[i]);
       const at = `pass ${i + 1}`;
       const db = await records(ns);
-      const want = new Map();
-      for (const [sk, st] of exp[i]) for (const [rk, r] of st.current) want.set(`${sk}|${rk}`, r);
+      const cmp = recordProblems(db, exp[i], { tomb, at });
+      problems.push(...cmp.problems);
+      // A key that left live in this pass: its removed version against the rows it had before.
+      for (const { k, got } of tomb ? [] : cmp.removed) {
+        const last = before.get(k);
+        if (!last || !got?.removed) continue;
+        const top = Math.max(...got.rows.map(({ row }) => Number(row.rev)));
+        for (const { table, row } of got.rows.filter(({ row: x }) => Number(x.rev) === top)) {
+          const old = last.find((x) => x.table === table && idOf(table, x.row) === idOf(table, row));
+          if (!old) continue;
+          copies++;
+          const changed = [...new Set([...Object.keys(old.row), ...Object.keys(row)])].filter((c) => !VERSION_COLUMNS.has(c) && norm(old.row[c]) !== norm(row[c]));
+          if (changed.length) problems.push(`${at}: the removed version of ${show(k)} is not a copy of its last row: ${changed.join(', ')} changed`);
+        }
+      }
+      before = new Map([...db].filter(([, r]) => r.current).map(([k, r]) => [k, r.rows.filter(({ row }) => !Number(row.removed))]));
+      const { want } = cmp;
+      removedSeen += cmp.removed.length;
       for (const [k, r] of want) {
         const got = db.get(k);
-        if (!got?.current) problems.push(`${at}: ${show(k)} is live but not current`);
-        else if (!shaMatches(r, got, true)) problems.push(`${at}: ${show(k)} is current with another content_sha than its derived record`);
         if (r.type === 'message' && r.state === 'retracted') {
           retracted++;
           if (got?.current && !got.rows.filter(({ row }) => !Number(row.removed)).every(({ row }) => row.state === 'retracted')) problems.push(`${at}: ${show(k)} is retracted but its rows say otherwise`);
-        }
-      }
-      for (const [k, got] of db) if (got.current && !want.has(k)) problems.push(`${at}: ${show(k)} is current but not live`);
-      for (const [sk, st] of exp[i]) {
-        for (const [rk, r] of st.removed) {
-          const k = `${sk}|${rk}`;
-          const got = db.get(k);
-          removedSeen++;
-          if (tomb) {
-            if (got && !got.removed) problems.push(`${at}: ${show(k)} left live but is still current`);
-          } else if (!got) problems.push(`${at}: ${show(k)} left live and has no removed version`);
-          else if (!got.removed) problems.push(`${at}: ${show(k)} left live and is still current`);
-          else if (!shaMatches(r, got, false)) problems.push(`${at}: the removed version of ${show(k)} is not a copy of its last row`);
         }
       }
       // Totals: current rows count exactly what the live records count.
@@ -67,23 +75,14 @@ export default {
       const gotTotals = totals(usage, msgs.size);
       if (JSON.stringify(gotTotals) !== JSON.stringify(wantTotals)) problems.push(`${at}: totals over current rows ${JSON.stringify(gotTotals)}, over live records ${JSON.stringify(wantTotals)}`);
     }
-    const notes = [`${sc.passes.length} passes; ${removedSeen} key(s) that left live checked; ${retracted} retracted message(s) checked current; totals compared after each pass`];
+    const notes = [`${sc.passes.length} passes; ${removedSeen} key(s) that left live checked, ${copies} removed row(s) compared column by column with the row before; ${retracted} retracted message(s) checked current; totals compared after each pass`];
+    if (!tomb && !copies) problems.push('no removed version could be compared with its last row: the check proves nothing');
     if (!removedSeen) problems.push('the scenario removed no key: the check proves nothing');
     return verdict(problems, notes);
   },
 };
 
 const show = (k) => k.replace(/\u0000/g, '/').slice(0, 200);
-
-// The record's rows carry its content_sha (a message's parts: as message_content_sha). For a
-// current record only its current rows count: a part its message dropped is a removed row beside.
-// For a removed record, the rows of its latest version (the highest rev) count.
-function shaMatches(r, got, current) {
-  const top = Math.max(...got.rows.map(({ row }) => Number(row.rev)));
-  const rows = got.rows.filter(({ row }) => (current ? !Number(row.removed) : Number(row.rev) === top));
-  if (r.type === 'message') return rows.every(({ row }) => row.message_content_sha === r.content_sha);
-  return rows.every(({ row }) => row.content_sha === r.content_sha);
-}
 
 function totals(usage, messages) {
   const t = Object.fromEntries(TOKENS.map((c) => [c, 0]));

@@ -37,6 +37,11 @@ export const DDL_FAULTS = {
   // session_parts partitioned by month of ingestion (ClickHouse).
   'partition-by-time': (t) => once(t, /(ENGINE = ReplacingMergeTree\(rev, is_deleted\)\n)(ORDER BY \(host, harness, harness_path, session_id, incarnation, message_id, part_id\);)/, '$1PARTITION BY toYYYYMM(ingested_at)\n$2', 'partition-by-time'),
 
+  // The host form checks without their anchors: a value holding 32 hex digits anywhere passes.
+  'host-check-unanchored': (t, p) => (p === 'clickhouse'
+    ? once(t, /'\^\(r-\)\?\[0-9a-f\]\{32\}\$'/g, "'(r-)?[0-9a-f]{32}'", 'host-check-unanchored')
+    : once(t, /'\^\(r-\)\?\[0-9a-f\]\{32\}\$'/g, "'(r-)?[0-9a-f]{32}'", 'host-check-unanchored')),
+
   // A message's ts that cannot be null.
   'ts-not-null': (t, p) => (p === 'clickhouse'
     ? once(t, /\n(\s*)ts(\s+)Nullable\(DateTime64\(3, 'UTC'\)\),/g, "\n$1ts$2DateTime64(3, 'UTC'),", 'ts-not-null')
@@ -63,6 +68,17 @@ export const DDL_FAULTS = {
   },
 };
 
+// The profiles a DDL fault applies to, where not both (its pattern exists only there).
+export const DDL_FAULT_PROFILES = {
+  'partition-by-time': ['clickhouse'],
+  'reorder-columns': ['clickhouse'],
+};
+
+// The profiles an engine fault breaks anything in, where not both.
+export const ENGINE_FAULT_PROFILES = {
+  'pg-partial-upsert': ['postgres'],
+};
+
 // What each fault breaks, for the self-test's report.
 export const FAULT_NOTES = {
   'ddl:drop-key-column': "session_units' key loses `chunk`",
@@ -72,6 +88,7 @@ export const FAULT_NOTES = {
   'ddl:ts-not-null': '`ts` not Nullable',
   'ddl:counters-not-null': 'usage counters and exit_code not Nullable, default 0',
   'ddl:reorder-columns': 'two column pairs swapped in sessions and session_parts',
+  'ddl:host-check-unanchored': 'the host form checks without ^ and $',
   'engine:regenerate': 'a re-delivered read opens a new generation',
   'engine:cursor-early': 'the cursor advances right after the archive write',
   'engine:skip-removed': 'no removed versions',
@@ -89,4 +106,16 @@ export const FAULT_NOTES = {
   'engine:unredact': 'redaction markers replaced by the planted value',
   'engine:pg-skew': 'PostgreSQL part shas computed without null members',
   'engine:sql-tsv-no-trim': "the legacy line SQL keeps formatRow's trailing newline",
+  'engine:policy-kept-as-removed': 'a vanished source the consumer keeps is removed, live and in its manifest',
+  'engine:private-manifest': "manifests in a layout of the engine's own, which only its replay reads",
+  'engine:ignore-crash': 'every pass runs to its end whatever crashAfter says (manifests of reads that change nothing omitted)',
+  'engine:no-rerun-bump': 'a re-run that reads other content after a crash writes its manifest beside the crashed one, at the same generation and progress',
+  'engine:part-sha-no-nulls': "a part's content_sha computed without its null members (both profiles)",
+  'engine:chunk-drop': 'a unit stored in several chunks loses its last chunk',
+  'engine:pg-partial-upsert': 'a PostgreSQL upsert sets only the columns the new version has, so one it lost keeps its old value',
+  'engine:removed-rewrite': 'a removed version loses its text and its adapter-set state, its shas kept',
+  'engine:edge-needs-all': 'an edge ends when any one of its supporting statements is removed',
+  'engine:unredact-b64': 'a redacted unit stored with its planted value put back, as base64',
+  'engine:host-merge-messages': "a second host's messages, usage, links and lifecycle written under the first host",
+  'engine:fill-ts-lifecycle': "a lifecycle record's null ts filled with the first-seen time",
 };

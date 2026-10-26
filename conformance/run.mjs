@@ -6,8 +6,16 @@
 //   node run.mjs --self-test     every check against each of its faults (must fail)
 //   node run.mjs --only a,b      only the checks with these ids
 //   node run.mjs --profile clickhouse|postgres
+//   node run.mjs --allow-skip    exit 0 although a selected check could not run here
+//   node run.mjs --fault k:name  with --self-test: run these faults (comma list), not each
+//                                check's own, against the selected checks
 //   node run.mjs --json <file>   also write the results as JSON
 //   node run.mjs --verbose       print every check's notes
+//
+// Exit 0: every selected check ran and passed. Exit 1: a check failed or errored, or (without
+// --allow-skip) a selected check was skipped or ran only as a self-check of schema/, or nothing
+// was checked at all. Exit 2: a usage error (an unknown check id, flag, profile or fault; a
+// profile with no target; no target at all) or the kit itself failed.
 //
 // Environment: SSQL_CH_URL, SSQL_CH_USER, SSQL_CH_PASSWORD, SSQL_PG_URL, SSQL_PREFIX (default
 // conf_), SSQL_ENGINE (the engine module under test; default the reference engine), SSQL_ADAPTERS
@@ -17,24 +25,58 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { targets as readTargets, describeTarget, openNamespace, clientFor, PROFILES } from './lib/db.mjs';
+import { targets as readTargets, describeTarget, openNamespace, loadSchema, clientFor, openNamespaces, PROFILES } from './lib/db.mjs';
 import { loadAdapters } from './lib/adapters.mjs';
 import { expectStates } from './lib/oracle.mjs';
 import { EngineError } from './lib/result.mjs';
-import { DDL_FAULTS, FAULT_NOTES } from './reference/faults.mjs';
+import { scrub } from './lib/secrets.mjs';
+import { DDL_FAULTS, DDL_FAULT_PROFILES, ENGINE_FAULT_PROFILES, FAULT_NOTES } from './reference/faults.mjs';
+import { ENGINE_FAULTS } from './reference/engine.mjs';
 import * as scenarios from './envelopes.mjs';
+import { removeFixtureCopies } from './envelopes.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const KIT_VERSION = JSON.parse(fs.readFileSync(path.join(HERE, 'package.json'), 'utf8')).version;
 const REFERENCE = pathToFileURL(path.join(HERE, 'reference', 'engine.mjs')).href;
 
 class SkipError extends Error {}
+class UsageError extends Error {}
+
+// Namespaces a check could not drop: named at the end of the report, never silently left.
+const dropFailures = [];
+
+// An interrupted run (Ctrl-C, or a test harness's timeout) drops what it opened and removes its
+// fixture copies before it exits.
+let stopping = false;
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+  process.on(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    process.stderr.write(`\n${signal}: dropping ${openNamespaces.size} namespace(s) and removing fixture copies\n`);
+    removeFixtureCopies();
+    // A statement still in flight (a table being created) can make the first drop fail: retry.
+    const dropHard = async (ns) => {
+      for (let i = 0; i < 20 && openNamespaces.has(ns); i++) {
+        await ns.drop().catch(() => new Promise((r) => setTimeout(r, 250)));
+      }
+    };
+    const drops = Promise.allSettled([...openNamespaces].map(dropHard));
+    await Promise.race([drops, new Promise((r) => setTimeout(r, 30000).unref())]);
+    if (openNamespaces.size) process.stderr.write(`not dropped: ${[...openNamespaces].map((ns) => ns.name).join(', ')}\n`);
+    process.exit(code);
+  });
+}
 
 const SCENARIOS = {
   broad: scenarios.broad, rewind: scenarios.rewind, edges: scenarios.edges, absences: scenarios.absences,
   noop: scenarios.noop, partial: scenarios.partial, twoHosts: scenarios.twoHosts, sentinels: scenarios.sentinels,
-  zeroPart: scenarios.zeroPart, nullTs: scenarios.nullTs,
+  zeroPart: scenarios.zeroPart, nullTs: scenarios.nullTs, crashRerun: scenarios.crashRerun, refLost: scenarios.refLost,
 };
+
+// Whether the engine supplies its own DDL (spec §3: a deployment's tables are its own). Without
+// it, every namespace is made from this repository's schema/, and the database parts check that
+// DDL, not the engine's: a self-check of schema/, kept out of the engine's verdict.
+const suppliesDdl = (engineModule) => typeof engineModule?.createTables === 'function';
 
 // What a check runs in. Every namespace it opens is dropped when it ends.
 class Context {
@@ -43,9 +85,21 @@ class Context {
     this.opened = [];
   }
 
+  // A fresh namespace, its tables made by the engine's createTables (its own DDL), or from
+  // schema/ when the engine has none.
   async namespace(profile = this.profile) {
-    const transforms = this.ddlFaults.map((f) => DDL_FAULTS[f]);
-    const ns = await openNamespace(profile, this.targets[profile], { prefix: this.targets.prefix, transforms });
+    const create = suppliesDdl(this.engineModule)
+      ? async (ns) => {
+        try {
+          await this.engineModule.createTables({
+            profile: ns.profile, ns, target: this.targets[ns.profile], database: ns.name, prefix: ns.prefix, tables: ns.tables, faults: this.ddlFaults,
+          });
+        } catch (err) {
+          throw new EngineError(`the engine's createTables threw: ${scrub(String(err?.message ?? err).split('\n')[0]).slice(0, 300)}`);
+        }
+      }
+      : (ns) => loadSchema(ns, { transforms: this.ddlFaults.map((f) => DDL_FAULTS[f]) });
+    const ns = await openNamespace(profile, this.targets[profile], { prefix: this.targets.prefix, create });
     this.opened.push(ns);
     return ns;
   }
@@ -60,7 +114,7 @@ class Context {
       try {
         return await fn();
       } catch (err) {
-        throw new EngineError(`the engine's ${what} threw: ${String(err.message).split('\n')[0].slice(0, 300)}`);
+        throw new EngineError(`the engine's ${what} threw: ${scrub(String(err?.message ?? err).split('\n')[0]).slice(0, 300)}`);
       }
     };
     return {
@@ -71,8 +125,8 @@ class Context {
     };
   }
 
-  // The engine part of a check with a database part: an engine that throws fails the check, and
-  // the database part's findings stay in the report.
+  // A check written as one function with a database and an engine half (the older layout): an
+  // engine that throws fails the check, and the database half's findings stay in the report.
   async enginePart(problems, fn) {
     try {
       await fn();
@@ -93,28 +147,39 @@ class Context {
     return this.cache.expect.get(sc);
   }
 
-  // Copy session_units, and nothing else, from one namespace into another (same server).
-  async copyUnits(from, to, { exceptSha = [] } = {}) {
-    const where = exceptSha.length ? ` WHERE NOT (enc = 'manifest' AND sha256 IN (${exceptSha.map((s) => `'${s.replace(/[^0-9a-f]/g, '')}'`).join(', ')}))` : '';
-    await to.exec(`INSERT INTO ${to.t('session_units')} SELECT * FROM ${from.t('session_units')}${where}`);
+  // Copy session_units, and nothing else, from one namespace into another (same server), leaving
+  // out `except`: rows named by their whole identity (§3), never by a sha alone, which two
+  // manifests of two sources can share.
+  async copyUnits(from, to, { except = [] } = {}) {
+    const id = ['host', 'harness', 'harness_path', 'session_id', 'incarnation', 'source_key', 'generation', 'unit_key', 'chunk', 'sha256'];
+    const { where, params } = to.tupleIn(id, except.map((r) => id.map((c) => r[c])), { name: 'x' });
+    await to.run(`INSERT INTO ${to.t('session_units')} SELECT * FROM ${from.t('session_units')}${except.length ? ` WHERE NOT ${where}` : ''}`, params);
   }
 
   async close() {
-    for (const ns of this.opened) await ns.drop().catch(() => {});
+    for (const ns of this.opened) {
+      await ns.drop().catch((e) => {
+        dropFailures.push(ns.name);
+        process.stderr.write(`warning: namespace ${ns.name} was not dropped: ${scrub(e?.message ?? e).slice(0, 200)}\n`);
+      });
+    }
   }
 }
 
 async function loadChecks(only) {
   const dir = path.join(HERE, 'checks');
   const files = fs.readdirSync(dir).filter((f) => /^\d\d-.*\.mjs$/.test(f)).sort();
-  const checks = [];
+  const all = [];
   for (const f of files) {
     const c = (await import(pathToFileURL(path.join(dir, f)).href)).default;
     c.file = f;
     c.n = Number(f.slice(0, 2));
-    if (!only || only.includes(c.id)) checks.push(c);
+    all.push(c);
   }
-  return checks;
+  // A mistyped id is an error, never a check silently left out.
+  const unknown = (only ?? []).filter((id) => !all.some((c) => c.id === id));
+  if (unknown.length) throw new UsageError(`unknown check id(s): ${unknown.join(', ')}; the checks are ${all.map((c) => c.id).join(', ')}`);
+  return all.filter((c) => !only || only.includes(c.id));
 }
 
 async function loadEngine() {
@@ -126,22 +191,70 @@ async function loadEngine() {
   return { module, reference: url === REFERENCE };
 }
 
-async function runOne(check, ctx) {
+// A check's parts: `database` (the profile's DDL, read through the catalogue and plain SQL) and
+// `engine` (the engine under test, driven through passes). A check written as one `run` is one
+// part, of its `kind`.
+function partsOf(check) {
+  if (typeof check.run === 'function') return [{ part: check.kind ?? 'engine', fn: (ctx) => check.run(ctx) }];
+  return ['database', 'engine'].filter((p) => typeof check[p] === 'function').map((p) => ({ part: p, fn: (ctx) => check[p](ctx) }));
+}
+
+// The status of several parts run together (the self-test): a failing part fails them all.
+function combined(rs) {
+  for (const s of ['fail', 'error', 'skipped']) {
+    const r = rs.find((x) => x.status === s);
+    if (r) return { status: s, details: rs.flatMap((x) => x.details), notes: rs.flatMap((x) => x.notes) };
+  }
+  return { status: rs.every((x) => x.status === 'n/a') ? 'n/a' : 'pass', details: [], notes: rs.flatMap((x) => x.notes) };
+}
+
+async function runOne(fn, ctx) {
   try {
-    return await check.run(ctx);
+    return await fn(ctx);
   } catch (e) {
     if (e instanceof SkipError) return { status: 'skipped', details: [], notes: [e.message] };
-    if (e instanceof EngineError) return { status: 'fail', details: [e.message], notes: [] };
-    return { status: 'error', details: [`${e.message}`.split('\n')[0].slice(0, 400)], notes: [] };
+    if (e instanceof EngineError) return { status: 'fail', details: [scrub(e.message)], notes: [] };
+    return { status: 'error', details: [scrub(`${e?.message ?? e}`.split('\n')[0]).slice(0, 400)], notes: [] };
   } finally {
     await ctx.close();
   }
 }
 
-// The profiles a check runs on: one column per profile, or one run over both (parity).
-function plan(check, targets, only) {
-  if (check.both) return [{ profile: 'both', column: 'both' }];
-  return PROFILES.filter((p) => !only || p === only).map((p) => ({ profile: p, column: p, missing: !targets[p] }));
+// The profiles a run selects: --profile's, else every profile with a target. Either way, at
+// least one, each with a target.
+function selectProfiles(targets, onlyProfile) {
+  const env = { clickhouse: 'SSQL_CH_URL', postgres: 'SSQL_PG_URL' };
+  if (onlyProfile !== null) {
+    if (!PROFILES.includes(onlyProfile)) throw new UsageError(`--profile ${onlyProfile}: the profiles are ${PROFILES.join(', ')}`);
+    if (!targets[onlyProfile]) throw new UsageError(`--profile ${onlyProfile}: no target (${env[onlyProfile]} is not set)`);
+    return [onlyProfile];
+  }
+  const selected = PROFILES.filter((p) => targets[p]);
+  if (!selected.length) throw new UsageError(`no target: set ${PROFILES.map((p) => env[p]).join(' and/or ')}`);
+  return selected;
+}
+
+// The profiles a check runs on: one column per profile, or one run over both (parity). A column
+// outside the selection is `not run`: reported, never part of the verdict.
+function plan(check, targets, selected) {
+  if (check.both) {
+    if (PROFILES.every((p) => selected.includes(p))) return [{ profile: 'both', column: 'both' }];
+    return [{ profile: 'both', column: 'both', notRun: 'needs a ClickHouse and a PostgreSQL target in one run' }];
+  }
+  return PROFILES.map((p) => (selected.includes(p) ? { profile: p, column: p }
+    : { profile: p, column: p, notRun: targets[p] ? 'not selected (--profile)' : `no ${p} target` }));
+}
+
+// The faults a self-test runs against a check: --fault's, or the check's own.
+function faultsFor(check, faultArg) {
+  return faultArg ?? check.faults ?? [];
+}
+
+function validFault(f) {
+  const [kind, name] = f.split(':');
+  if (kind === 'ddl') return Object.hasOwn(DDL_FAULTS, name);
+  if (kind === 'engine') return ENGINE_FAULTS.has(name);
+  return false;
 }
 
 async function serverVersion(profile, target) {
@@ -151,7 +264,7 @@ async function serverVersion(profile, target) {
     const rows = profile === 'clickhouse' ? await c.query('SELECT version() AS v') : await c.query('SHOW server_version');
     return profile === 'clickhouse' ? rows[0].v : rows[0].server_version;
   } catch (e) {
-    return `unreachable (${e.message.slice(0, 80)})`;
+    return `unreachable (${scrub(e?.message ?? e).slice(0, 80)})`;
   } finally {
     await c.close();
   }
@@ -165,18 +278,35 @@ function kitCommit() {
   }
 }
 
-function arg(name) {
-  const i = process.argv.indexOf(name);
-  return i < 0 ? null : process.argv[i + 1];
+const FLAGS = new Set(['--self-test', '--verbose', '--allow-skip']);
+const OPTIONS = new Set(['--only', '--profile', '--json', '--fault']);
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (FLAGS.has(a)) out[a] = true;
+    else if (OPTIONS.has(a)) {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${a} needs a value`);
+      out[a] = argv[++i];
+    } else throw new UsageError(`unknown argument ${a}`);
+  }
+  return out;
 }
 
 async function main() {
-  const selfTest = process.argv.includes('--self-test');
-  const verbose = process.argv.includes('--verbose');
-  const only = arg('--only')?.split(',');
-  const onlyProfile = arg('--profile');
-  const jsonOut = arg('--json');
+  const args = parseArgs(process.argv.slice(2));
+  const selfTest = !!args['--self-test'];
+  const verbose = !!args['--verbose'];
+  const allowSkip = !!args['--allow-skip'];
+  const only = args['--only']?.split(',').filter(Boolean) ?? null;
+  const onlyProfile = args['--profile'] ?? null;
+  const jsonOut = args['--json'] ?? null;
+  const faultArg = args['--fault']?.split(',').filter(Boolean) ?? null;
+  if (faultArg && !selfTest) throw new UsageError('--fault runs with --self-test only');
+  for (const f of faultArg ?? []) if (!validFault(f)) throw new UsageError(`unknown fault ${f} (see reference/faults.mjs)`);
   const targets = readTargets();
+  const selected = selectProfiles(targets, onlyProfile);
   const { source: adapters, error: adaptersError } = await loadAdapters();
   const engine = await loadEngine();
   const checks = await loadChecks(only);
@@ -196,34 +326,45 @@ async function main() {
     const v = await serverVersion(p, targets[p]);
     console.log(`target ${describeTarget(p, targets[p])}${v ? ` (${v})` : ''}`);
   }
+
+  const ownDdl = suppliesDdl(engine.module);
+  console.log(ownDdl
+    ? 'ddl: the engine\'s own (createTables); the database parts check it'
+    : 'ddl: this repository\'s schema/ (the engine supplies no createTables); the database parts are a self-check of schema/, outside the engine\'s verdict');
   console.log('');
 
   const results = [];
   if (!selfTest) {
     for (const check of checks) {
-      for (const { profile, column, missing } of plan(check, targets, onlyProfile)) {
-        let r;
-        if (missing) r = { status: 'skipped', details: [], notes: [`no ${profile} target`] };
-        else r = await runOne(check, new Context({ profile, targets, adapters, adaptersError, engineModule: engine.module, cache }));
-        results.push({ n: check.n, id: check.id, title: check.title, kind: check.kind, column, ...r });
-        process.stderr.write(`${check.n}. ${check.title} [${column}]: ${r.status}\n`);
+      for (const { part, fn } of partsOf(check)) {
+        const selfCheck = part === 'database' && !ownDdl;
+        for (const { profile, column, notRun } of plan(check, targets, selected)) {
+          let r;
+          if (notRun) r = { status: 'not run', details: [], notes: [notRun] };
+          else r = await runOne(fn, new Context({ profile, targets, adapters, adaptersError, engineModule: engine.module, cache }));
+          results.push({ n: check.n, id: check.id, title: check.title, part, selfCheck, column, ...r });
+          process.stderr.write(`${check.n}. ${check.title} (${part}${selfCheck ? ', self-check of schema/' : ''}) [${column}]: ${r.status}\n`);
+        }
       }
     }
     printReport(checks, results, verbose);
   } else {
     if (!engine.reference) throw new Error('the self-test runs the reference engine only: unset SSQL_ENGINE');
     for (const check of checks) {
-      for (const fault of check.faults ?? []) {
+      for (const fault of faultsFor(check, faultArg)) {
         const [kind, name] = fault.split(':');
-        for (const { profile, column, missing } of plan(check, targets, onlyProfile)) {
-          if (missing) continue;
-          if (kind === 'ddl' && profile === 'postgres' && ['partition-by-time', 'reorder-columns'].includes(name)) continue;
+        for (const { profile, column, notRun } of plan(check, targets, selected)) {
+          if (notRun) continue;
+          if (profile !== 'both' && !((kind === 'ddl' ? DDL_FAULT_PROFILES : ENGINE_FAULT_PROFILES)[name] ?? PROFILES).includes(profile)) continue;
           if (check.profiles && profile !== 'both' && !check.profiles.includes(profile)) continue;
-          const ctx = new Context({
-            profile, targets, adapters, adaptersError, engineModule: engine.module, cache,
-            ddlFaults: kind === 'ddl' ? [name] : [], engineFaults: kind === 'engine' ? [name] : [],
-          });
-          const r = await runOne(check, ctx);
+          const rs = [];
+          for (const { fn } of partsOf(check)) {
+            rs.push(await runOne(fn, new Context({
+              profile, targets, adapters, adaptersError, engineModule: engine.module, cache,
+              ddlFaults: kind === 'ddl' ? [name] : [], engineFaults: kind === 'engine' ? [name] : [],
+            })));
+          }
+          const r = combined(rs);
           results.push({ n: check.n, id: check.id, title: check.title, fault, column, ...r });
           process.stderr.write(`${check.n}. ${check.title} with ${fault} [${column}]: ${r.status === 'fail' ? 'failed, as it must' : r.status}\n`);
         }
@@ -231,31 +372,69 @@ async function main() {
     }
     printSelfTest(results, verbose);
   }
-  if (jsonOut) fs.writeFileSync(jsonOut, `${JSON.stringify({ kit: KIT_VERSION, commit: kitCommit(), engine: engineInfo, selfTest, results }, null, 2)}\n`);
-  const bad = selfTest ? results.filter((r) => r.status !== 'fail') : results.filter((r) => r.status === 'fail' || r.status === 'error');
-  process.exitCode = bad.length ? 1 : 0;
+  const v = selfTest ? selfTestVerdict(results) : verdictOf(results, allowSkip);
+  if (dropFailures.length) console.log(`\nwarning: ${dropFailures.length} namespace(s) were not dropped: ${dropFailures.join(', ')}`);
+  console.log(`\n${v.line}`);
+  if (jsonOut) fs.writeFileSync(jsonOut, `${JSON.stringify({ kit: KIT_VERSION, commit: kitCommit(), engine: engineInfo, ddl: ownDdl ? 'engine' : 'schema/ (self-check)', selfTest, verdict: v, results }, null, 2)}\n`);
+  process.exitCode = v.ok ? 0 : 1;
+}
+
+// The run's verdict. A self-check row tests schema/, not the engine: it is never part of the
+// engine's pass or fail, and, like a skipped row, it is an item the run did not prove for the
+// engine (exit 1 unless --allow-skip). A `not run` row (a profile outside the selection) counts
+// for nothing. A run that checked nothing never passes.
+function verdictOf(results, allowSkip) {
+  const rows = results.filter((r) => r.status !== 'not run');
+  const failed = rows.filter((r) => !r.selfCheck && (r.status === 'fail' || r.status === 'error'));
+  const unproven = rows.filter((r) => r.status === 'skipped' || r.selfCheck);
+  const checked = rows.filter((r) => !r.selfCheck && (r.status === 'pass' || r.status === 'fail'));
+  const why = [];
+  if (failed.length) why.push(`${failed.length} row(s) failed or errored`);
+  if (unproven.length && !allowSkip) why.push(`${unproven.length} selected row(s) not proven for the engine (skipped, or a self-check of schema/); --allow-skip accepts that`);
+  if (!checked.length) why.push('nothing was checked');
+  return { ok: !why.length, failed: failed.length, unproven: unproven.length, checked: checked.length, line: why.length ? `exit 1: ${why.join('; ')}` : `exit 0: ${checked.length} row(s) checked${unproven.length ? `, ${unproven.length} not proven (allowed)` : ''}` };
+}
+
+function selfTestVerdict(results) {
+  const bad = results.filter((r) => r.status !== 'fail');
+  const why = [];
+  if (bad.length) why.push(`${bad.length} control(s) did not make their check fail`);
+  if (!results.length) why.push('no control ran');
+  return { ok: !why.length, controls: results.length, caught: results.length - bad.length, line: why.length ? `exit 1: ${why.join('; ')}` : `exit 0: ${results.length} control(s), each made its check fail` };
 }
 
 function printReport(checks, results, verbose) {
   const cols = ['clickhouse', 'postgres'];
-  console.log('| # | §8 item | kind | ClickHouse | PostgreSQL |');
+  console.log('| # | §8 item | part | ClickHouse | PostgreSQL |');
   console.log('|---|---|---|---|---|');
   for (const c of checks) {
-    const mine = results.filter((r) => r.id === c.id);
-    const both = mine.find((r) => r.column === 'both');
-    const cell = (col) => (both ? both.status : mine.find((r) => r.column === col)?.status ?? '-');
-    console.log(`| ${c.n} | ${c.title} | ${c.kind} | ${cell(cols[0])} | ${cell(cols[1])} |`);
+    for (const { part } of partsOf(c)) {
+      const mine = results.filter((r) => r.id === c.id && r.part === part);
+      const both = mine.find((r) => r.column === 'both');
+      const show = (r) => (!r || r.status === 'not run' ? '-' : `${r.status}${r.selfCheck ? ' (self-check)' : ''}`);
+      const cell = (col) => (both ? show(both) : show(mine.find((r) => r.column === col)));
+      const label = mine.some((r) => r.selfCheck) ? `${part}: schema/ self-check` : part;
+      console.log(`| ${c.n} | ${c.title} | ${label} | ${cell(cols[0])} | ${cell(cols[1])} |`);
+    }
   }
   for (const r of results) {
+    if (r.status === 'not run') continue;
     if (r.details.length || (verbose && r.notes.length)) {
-      console.log(`\n${r.n}. ${r.title} [${r.column}]: ${r.status}`);
+      console.log(`\n${r.n}. ${r.title} (${r.part}${r.selfCheck ? ', self-check of schema/' : ''}) [${r.column}]: ${r.status}`);
       for (const d of r.details) console.log(`  - ${d}`);
       if (verbose || r.status !== 'pass') for (const n of r.notes) console.log(`  · ${n}`);
     }
   }
-  const tally = {};
-  for (const r of results) tally[r.status] = (tally[r.status] ?? 0) + 1;
-  console.log(`\n${Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+  const tally = (rs) => {
+    const t = {};
+    for (const r of rs) t[r.status] = (t[r.status] ?? 0) + 1;
+    return Object.entries(t).map(([k, v]) => `${v} ${k}`).join(', ') || 'none';
+  };
+  const notRun = results.filter((r) => r.status === 'not run');
+  console.log(`\nthe engine: ${tally(results.filter((r) => !r.selfCheck && r.status !== 'not run'))}`);
+  if (notRun.length) console.log(`not run (outside this run's profiles): ${[...new Set(notRun.map((r) => `${r.column}: ${r.notes[0]}`))].join('; ')}`);
+  const self = results.filter((r) => r.selfCheck);
+  if (self.length) console.log(`self-check of schema/ (not the engine's DDL, outside its verdict): ${tally(self)}`);
 }
 
 function printSelfTest(results, verbose) {
@@ -271,6 +450,6 @@ function printSelfTest(results, verbose) {
 }
 
 main().catch((e) => {
-  console.error(`kit error: ${e.message}`);
+  console.error(`${e instanceof UsageError ? 'usage' : 'kit error'}: ${scrub(e?.message ?? e)}`);
   process.exitCode = 2;
 });

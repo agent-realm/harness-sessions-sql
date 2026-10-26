@@ -10,6 +10,8 @@
 //   row of its own (a manifest, a cursor, an edge);
 // - at least one planted value is held by no emitted unit or record (redacted on its path), and
 //   the archive keeps the redacted units with `redacted` set.
+// A unit is read whole and as its text: its chunks joined in chunk order, and a `b64` body decoded
+// (a planted value in base64 is still the planted value).
 
 import { sessionKeyOf, rkOfRow, ALL_TABLES } from '../lib/keys.mjs';
 import { emittedUnits } from '../lib/oracle.mjs';
@@ -18,10 +20,9 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'redaction-holds',
   title: 'Redaction holds',
-  kind: 'engine',
-  faults: ['engine:unredact'],
+  faults: ['engine:unredact', 'engine:unredact-b64'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('sentinels');
     const values = sc.sentinels;
@@ -32,18 +33,20 @@ export default {
     const exp = ctx.expect(sc).at(-1);
     const derived = new Map();
     for (const [sk, st] of exp) for (const [rk, r] of [...st.current, ...st.removed]) derived.set(`${sk}|${rk}`, JSON.stringify(r));
-    const emittedText = [...[...units.values()].map((u) => u.body), ...derived.values()].join('\n');
+    const emittedText = [...[...units.values()].map((u) => textOf(u.enc, u.body)), ...derived.values()].join('\n');
     const redactedOnly = values.filter((v) => !emittedText.includes(v));
     let hits = 0;
     for (const table of ALL_TABLES) {
-      for (const row of await ns.present(table)) {
-        const text = JSON.stringify(row);
+      for (const row of table === 'session_units' ? wholeUnits(await ns.present(table)) : await ns.present(table)) {
+        const text = table === 'session_units' ? `${JSON.stringify({ ...row, raw: undefined })}\n${textOf(row.enc, row.raw)}` : JSON.stringify(row);
         for (const v of values) {
           if (!text.includes(v)) continue;
           hits++;
           let source = null;
-          if (table === 'session_units' && row.unit_key !== '') source = units.get(`${sessionKeyOf(row)}\u0000${row.source_key}\u0000${row.unit_key}\u0000${row.sha256}`)?.body ?? null;
-          else if (table !== 'session_units' && table !== 'session_sources') {
+          if (table === 'session_units' && row.unit_key !== '') {
+            const u = units.get(`${sessionKeyOf(row)}\u0000${row.source_key}\u0000${row.unit_key}\u0000${row.sha256}`);
+            source = u ? textOf(u.enc, u.body) : null;
+          } else if (table !== 'session_units' && table !== 'session_sources') {
             const rk = rkOfRow(table, row);
             source = rk === null ? null : derived.get(`${sessionKeyOf(row)}|${rk}`) ?? null;
           }
@@ -58,3 +61,24 @@ export default {
     return verdict(problems, [`${values.length} planted values, ${redactedOnly.length} redacted on declared paths and found in no table; ${hits} free-text occurrence(s) traced to the unit or record that holds them; ${redactedUnits.length} redacted units archived`]);
   },
 };
+
+// A unit's text: its body, and for `b64` the decoded bytes as well.
+function textOf(enc, raw) {
+  if (enc !== 'b64') return String(raw);
+  const bytes = Buffer.from(String(raw), 'base64');
+  return `${raw}\n${bytes.toString('utf8')}\n${bytes.toString('latin1')}`;
+}
+
+// session_units rows with each unit's chunks joined into one row, in chunk order.
+function wholeUnits(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = [sessionKeyOf(r), r.source_key, r.generation, r.unit_key, r.sha256].join('\u0000');
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  return [...groups.values()].map((rs) => {
+    const sorted = [...rs].sort((a, b) => Number(a.chunk) - Number(b.chunk));
+    return { ...sorted[0], raw: sorted.map((r) => r.raw).join('') };
+  });
+}

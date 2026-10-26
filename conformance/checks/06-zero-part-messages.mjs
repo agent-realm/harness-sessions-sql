@@ -9,10 +9,9 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'zero-part-messages',
   title: 'Zero-part messages',
-  kind: 'engine',
   faults: ['engine:drop-empty'],
 
-  async run(ctx) {
+  async engine(ctx) {
     const problems = [];
     const sc = ctx.scenario('zeroPart');
     const exp = ctx.expect(sc).at(-1);

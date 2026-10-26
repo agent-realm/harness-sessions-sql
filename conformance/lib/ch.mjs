@@ -1,9 +1,13 @@
 // ClickHouse over its HTTP interface, with fetch: no driver. Credentials travel in the
-// X-ClickHouse-User / X-ClickHouse-Key headers and are never logged.
+// X-ClickHouse-User / X-ClickHouse-Key headers and are never logged. A URL that carries user info
+// (http://user:password@host.example:8123) gives it up to those headers: the URL the client keeps, and
+// every message it builds, has none (lib/secrets.mjs).
+
+import { registerSecret, registerUrl, scrub } from './secrets.mjs';
 
 export class DbError extends Error {
   constructor(message, { status, sql } = {}) {
-    super(message);
+    super(scrub(message));
     this.status = status;
     this.sql = sql;
   }
@@ -17,9 +21,24 @@ const WRITE = { input_format_json_named_tuples_as_objects: 1, date_time_input_fo
 
 export class ClickHouse {
   constructor({ url, user = '', password = '' }) {
-    this.url = url.replace(/\/+$/, '');
-    this.user = user;
-    this.password = password;
+    registerUrl(url);
+    registerSecret(user, { word: true });
+    registerSecret(password);
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      throw new DbError('the ClickHouse URL does not parse');
+    }
+    const urlUser = decodeURIComponent(u.username);
+    const urlPassword = decodeURIComponent(u.password);
+    u.username = '';
+    u.password = '';
+    this.url = u.href.replace(/\/+$/, '');
+    this.where = `${u.protocol}//${u.host}`;
+    this.user = user || urlUser;
+    this.password = password || urlPassword;
+    this.timeoutMs = Number(process.env.SSQL_TIMEOUT_MS) || 300000;
   }
 
   headers() {
@@ -41,9 +60,12 @@ export class ClickHouse {
     }
     let res;
     try {
-      res = await fetch(`${this.url}/?${params}`, { method: 'POST', headers: this.headers(), body: payload });
+      res = await fetch(`${this.url}/?${params}`, { method: 'POST', headers: this.headers(), body: payload, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch (e) {
-      throw new DbError(`ClickHouse unreachable: ${e.cause?.code ?? e.message}`, { sql });
+      if (e.name === 'TimeoutError') throw new DbError(`ClickHouse at ${this.where} did not answer within ${this.timeoutMs / 1000}s (SSQL_TIMEOUT_MS)`, { sql });
+      // Never fetch's own message: it can quote the URL it was given. The URL here has no user
+      // info, and DbError scrubs the cause's message all the same.
+      throw new DbError(`ClickHouse unreachable at ${this.where}: ${e.cause?.code ?? e.cause?.message ?? e.name}`, { sql });
     }
     const text = await res.text();
     if (!res.ok) throw new DbError(text.trim().split('\n')[0].slice(0, 2000), { status: res.status, sql });

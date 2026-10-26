@@ -4,7 +4,8 @@
 // duplicate, for a key an upgraded adapter no longer produces (§2, principle 3), or as a
 // tombstoning consumer's tombstone."
 //
-// Database part: the DDL, as loaded under the deployment prefix, read back from the catalogue.
+// Database part: the DDL (the engine's own, through createTables, or schema/ as a self-check),
+// as loaded under the deployment prefix, read back from the catalogue.
 // Engine part: after the rewind scenario, every record that was ever current is still present
 // (current, or a removed version); for a tombstoning engine, a record that left live may be gone.
 
@@ -15,10 +16,9 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'tables-and-keys',
   title: 'Tables and keys',
-  kind: 'database, engine',
   faults: ['ddl:drop-key-column', 'engine:delete-removed'],
 
-  async run(ctx) {
+  async database(ctx) {
     const problems = [];
     const notes = [];
     const ns = await ctx.namespace();
@@ -38,33 +38,33 @@ export default {
       if (missing.length || extra.length) problems.push(`${physical}: key ${[...got].join(', ')}; ${missing.length ? `missing ${missing.join(', ')}` : ''}${extra.length ? ` extra ${extra.join(', ')}` : ''}`);
     }
     notes.push(`${Object.keys(tables).length} tables of §3 checked under the prefix ${ns.prefix || '(none)'}`);
-
-    // The engine part.
-    await ctx.enginePart(problems, async () => {
-      const sc = ctx.scenario('rewind');
-      const ens = await ctx.namespace();
-      const engine = await ctx.engine(ens);
-      const exp = ctx.expect(sc);
-      const ever = new Set();
-      for (let i = 0; i < sc.passes.length; i++) {
-        await engine.pass(sc.passes[i]);
-        for (const [sk, st] of exp[i]) for (const rk of st.current.keys()) ever.add(`${sk}|${rk}`);
-      }
-      const held = await records(ens);
-      const last = exp.at(-1);
-      let gone = 0;
-      for (const k of ever) {
-        if (held.has(k)) continue;
-        const [sk, rk] = [k.slice(0, k.indexOf('|')), k.slice(k.indexOf('|') + 1)];
-        const leftLive = last.get(sk)?.removed.has(rk);
-        if ((engine.removal ?? 'removed') === 'tombstone' && leftLive) continue;
-        gone++;
-        if (gone <= 5) problems.push(`physically deleted: ${k.replace(/\u0000/g, '/')}${leftLive ? ' (left live; the engine keeps removed versions, not tombstones)' : ' (still live)'}`);
-      }
-      if (gone > 5) problems.push(`… ${gone} records physically deleted in all`);
-      notes.push(`${ever.size} records ever current over ${sc.passes.length} passes, each still present`);
-    });
     return verdict(problems, notes);
+  },
+
+  async engine(ctx) {
+    const problems = [];
+    const sc = ctx.scenario('rewind');
+    const ens = await ctx.namespace();
+    const engine = await ctx.engine(ens);
+    const exp = ctx.expect(sc);
+    const ever = new Set();
+    for (let i = 0; i < sc.passes.length; i++) {
+      await engine.pass(sc.passes[i]);
+      for (const [sk, st] of exp[i]) for (const rk of st.current.keys()) ever.add(`${sk}|${rk}`);
+    }
+    const held = await records(ens);
+    const last = exp.at(-1);
+    let gone = 0;
+    for (const k of ever) {
+      if (held.has(k)) continue;
+      const [sk, rk] = [k.slice(0, k.indexOf('|')), k.slice(k.indexOf('|') + 1)];
+      const leftLive = last.get(sk)?.removed.has(rk);
+      if ((engine.removal ?? 'removed') === 'tombstone' && leftLive) continue;
+      gone++;
+      if (gone <= 5) problems.push(`physically deleted: ${k.replace(/\u0000/g, '/')}${leftLive ? ' (left live; the engine keeps removed versions, not tombstones)' : ' (still live)'}`);
+    }
+    if (gone > 5) problems.push(`… ${gone} records physically deleted in all`);
+    return verdict(problems, [`${ever.size} records ever current over ${sc.passes.length} passes, each still present`]);
   },
 };
 
