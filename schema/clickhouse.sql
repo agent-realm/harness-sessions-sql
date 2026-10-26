@@ -1,6 +1,6 @@
--- sessions-sql v0 (draft): the normative ClickHouse profile.
+-- sessions-sql v1 (proposal): the normative ClickHouse database profile.
 -- Spec: 01-SESSIONS-SQL-SPEC.md. Records: sessions-model v1 (contracts/sessions-model.md).
--- Status: loads in clickhouse-local 26.11.1 with the sort keys of spec section 3 (section 9).
+-- Status: loads in ClickHouse 26.8 with the sort keys of spec section 3 (section 9).
 --
 -- Conventions:
 -- * The identity of every entity table is its whole ORDER BY (ReplacingMergeTree replaces on

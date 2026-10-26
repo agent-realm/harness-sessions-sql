@@ -1,4 +1,4 @@
--- sessions-sql v0 (draft): the PostgreSQL profile, over the same logical keys as clickhouse.sql.
+-- sessions-sql v1 (proposal): the PostgreSQL database profile, over the same logical keys as clickhouse.sql.
 -- Spec: 01-SESSIONS-SQL-SPEC.md, section 3.
 -- Status: loads in PostgreSQL 16 with the primary keys of spec section 3 (section 9).
 --
@@ -155,7 +155,7 @@ CREATE TABLE session_parts (
     part_state           text NOT NULL DEFAULT '',  -- the part's own state, '' = its message's
     content_sha          char(64) NOT NULL,
     adapter              text NOT NULL,
-    adapter_ver          text    NOT NULL,
+    adapter_ver          text NOT NULL,
     model_version        text NOT NULL,
     rev                  numeric(20,0) NOT NULL,
     is_deleted           boolean NOT NULL DEFAULT false,
@@ -187,7 +187,7 @@ CREATE TABLE session_usage (
     model          text NOT NULL DEFAULT '',
     content_sha    char(64) NOT NULL,
     adapter        text NOT NULL,
-    adapter_ver    text    NOT NULL,
+    adapter_ver    text NOT NULL,
     model_version  text NOT NULL,
     rev            numeric(20,0) NOT NULL,
     is_deleted     boolean NOT NULL DEFAULT false,
@@ -233,7 +233,7 @@ CREATE TABLE session_links (
     statements          jsonb NOT NULL DEFAULT '[]',
     content_sha         char(64) NOT NULL,
     adapter             text NOT NULL,
-    adapter_ver         text    NOT NULL,
+    adapter_ver         text NOT NULL,
     model_version       text NOT NULL,
     rev                 numeric(20,0) NOT NULL,
     is_deleted          boolean NOT NULL DEFAULT false,
@@ -260,7 +260,7 @@ CREATE TABLE session_lifecycle (
     evidence        text NOT NULL DEFAULT 'explicit',
     content_sha     char(64) NOT NULL,
     adapter         text NOT NULL,
-    adapter_ver     text    NOT NULL,
+    adapter_ver     text NOT NULL,
     model_version   text NOT NULL,
     rev             numeric(20,0) NOT NULL,
     is_deleted      boolean NOT NULL DEFAULT false,

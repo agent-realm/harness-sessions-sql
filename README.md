@@ -1,6 +1,6 @@
 # sessions-sql
 
-**Status: v0 draft.** The spec and both database profiles' DDL are drafted. The DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both profiles, and no implementation has run it yet.
+**Status: v1, proposed** (awaiting the maintainer's go). The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles, and no production implementation has run it yet.
 
 ## What it is
 

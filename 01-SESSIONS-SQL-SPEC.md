@@ -1,13 +1,15 @@
 # sessions-sql — Specification
 
-**version:** v0 (draft)
-**status:** the intended table shapes and semantics. Under AGENTS.md rule 2, no table or key is
-normative until a working implementation or a fixture test backs it. memhouse 0.20's capture
-engine is the first implementation, and these shapes will be reconciled against it.
+**version:** v1 (proposal, awaiting the maintainer's go)
+**status:** the table shapes and semantics of v1, proposed. Under AGENTS.md rule 2, no table or
+key is normative until a working implementation or a fixture test backs it. The conformance kit's
+fixture tests back every §8 item through its reference engine, on both database profiles.
+memhouse's capture engine is the first production implementation, and these shapes will be
+reconciled against it (§9).
 **provides:** the `sessions-sql` mapping: how session records are kept in SQL.
 **consumes:**
 [`sessions-model`][sessions-model] v1 (the records) and
-[`sessions`][sessions] v1 (the seam). Its ClickHouse profile uses common conventions:
+[`sessions`][sessions] v1 (the seam). Its ClickHouse database profile uses common conventions:
 ReplacingMergeTree versioned by `rev` with an `is_deleted` flag, `DateTime64` in UTC, and a
 server-stamped `writer` column.
 
@@ -50,7 +52,7 @@ guarantees:
   two writes, or a replay, converges to the same state. Transactions (PostgreSQL) are allowed
   but never required for correctness.
 
-### Out of scope (v0)
+### Out of scope (v1)
 
 - **Cursor storage and `rev` derivation** are consumer policy (see §7). `session_sources` (§4.6)
   shows one cursor layout and is informative: no conformance check needs it, and replay never
@@ -111,7 +113,7 @@ guarantees:
 
 ## 3. Keys and versioning
 
-Pieces marked **(plan)** are not yet proved by an implementation. They follow the rule that a session belongs to one harness store
+Pieces marked **(plan)** are not yet proved by a production implementation (§9). They follow the rule that a session belongs to one harness store
 (sessions-model §1 rule 1).
 
 | Table | Identity (normative), after the session key `S = (host, harness, harness_path, session_id, incarnation)` | Version |
@@ -685,9 +687,25 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
 
 ## 9. Status
 
-v0 draft. The fixtures are those of the session-adapters package (`packages/session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
-its reviewed golden. The first implementation is memhouse 0.20. Per the
-empirical-first rule, these shapes are corrected to match what it proves out.
+**v1, proposed:** it awaits the maintainer's go. It maps the records of
+[sessions-model][sessions-model] v1 as the [sessions][sessions] v1 seam delivers them. The fixtures
+are those of the session-adapters package (`packages/session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
+its reviewed golden. A conformance run reads them from a checkout of the package, because a
+published package ships no `fixtures/`.
+
+**The conformance kit** (`conformance/`) runs every §8 item against a ClickHouse or PostgreSQL
+target taken from the environment, and its self-test holds each check to the faults it exists to
+catch. Its reference engine implements §5 for both database profiles. On 2026-10-27, with this
+DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
+- the reference engine passes every §8 item on both database profiles, except the two legacy items
+  on PostgreSQL, which do not apply there (§8);
+- each of the self-test's 54 controls makes its check fail.
+
+**Production implementations.** memhouse's capture engine (0.20) is the first. Its run of the kit
+is recorded here when it has one. Until then no production implementation has passed the kit: the
+read manifests (§4.1) are proved by the reference engine alone, and the pieces marked (plan) wait
+for a production implementation. Per the empirical-first rule, these shapes are corrected to match
+what it proves out.
 
 **DDL check, 2026-10-22, on a disposable test VM:**
 - `schema/clickhouse.sql` loads in clickhouse-local 26.11.1, and all 7 tables (6 normative,
@@ -697,11 +715,9 @@ empirical-first rule, these shapes are corrected to match what it proves out.
 
 Both were re-checked after the 2026-10-22 harness-store change, and again with the `host` form
 checks and `sessions.host_label` (sessions-model §1), and again with the `session_links`
-`other_incarnation` key and the `child_host` / `origin_host` checks.
-
-Read manifests (§4.1) are normative for v0 but not yet implemented anywhere: memhouse 0.20 is to
-write them, and the "Absences replay" check proves them. No data test has run yet. The conformance suite (`conformance/`) is the next step; it runs
-against a ClickHouse or PostgreSQL target taken from the environment.
+`other_incarnation` key and the `child_host` / `origin_host` checks. The v1 DDL (a string
+`adapter_ver`, a nullable `child_stored` and `orig_sha256`) loads in ClickHouse 26.8 and
+PostgreSQL 16 with the keys of §3, as the kit's Tables and keys item reads them from each catalogue.
 
 [sessions-model]: https://github.com/agent-realm/sessions-model/blob/main/contracts/sessions-model.md
 [sessions]: https://github.com/agent-realm/sessions-model/blob/main/contracts/sessions.md
