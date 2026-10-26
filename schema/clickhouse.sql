@@ -19,7 +19,7 @@
 CREATE TABLE session_units
 (
     host          LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$'),  -- sessions-model §1, host/v0
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$'),  -- sessions-model §1, host/v0
     harness       LowCardinality(String),
     harness_path  LowCardinality(String),           -- the data folder's real path
     session_id    String,
@@ -46,7 +46,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation, source_key, gene
 CREATE TABLE session_sources
 (
     host               LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$'),  -- sessions-model §1, host/v0
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$'),  -- sessions-model §1, host/v0
     harness            LowCardinality(String),
     harness_path       LowCardinality(String),      -- the data folder's real path
     session_id         String,
@@ -71,7 +71,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation, source_key);
 CREATE TABLE sessions
 (
     host             LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
     host_label       String DEFAULT '',                 -- display only (e.g. my-laptop), never in a key
     harness          LowCardinality(String),
     harness_path     LowCardinality(String),
@@ -113,7 +113,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation);
 CREATE TABLE session_parts
 (
     host                 LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
     harness              LowCardinality(String),
     harness_path         LowCardinality(String),
     session_id           String,
@@ -188,7 +188,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation, message_id, part
 CREATE TABLE session_usage
 (
     host           LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
     harness        LowCardinality(String),
     harness_path   LowCardinality(String),
     session_id     String,
@@ -225,7 +225,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation, usage_id);
 CREATE TABLE session_links
 (
     host                LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
     harness             LowCardinality(String),      -- the stating session (the child, for engine edges)
     harness_path        LowCardinality(String),
     session_id          String,
@@ -233,7 +233,7 @@ CREATE TABLE session_links
     owner               LowCardinality(String),      -- adapter | engine
     kind                LowCardinality(String),      -- fork | subagent | rewind_copy | clear | continuation
     other_host          LowCardinality(String) DEFAULT '',  -- '': the stating session's own harness store
-    CONSTRAINT other_host_form CHECK other_host = '' OR match(other_host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',
+    CONSTRAINT other_host_form CHECK other_host = '' OR match(other_host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',
     other_harness_path  LowCardinality(String) DEFAULT '',
     other_harness       LowCardinality(String),
     other_session_id    String,
@@ -241,13 +241,13 @@ CREATE TABLE session_links
     at                  String DEFAULT '',
     stated_on           LowCardinality(String),      -- child | origin | both (both: engine only)
     child_host          LowCardinality(String) DEFAULT '',  -- '': the stating session's own harness store
-    CONSTRAINT child_host_form CHECK child_host = '' OR match(child_host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',
+    CONSTRAINT child_host_form CHECK child_host = '' OR match(child_host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',
     child_harness_path  LowCardinality(String) DEFAULT '',
     child_harness       LowCardinality(String),
     child_session_id    String,
     child_incarnation   Nullable(String),            -- null: unknown to the stating side
     origin_host         LowCardinality(String) DEFAULT '',
-    CONSTRAINT origin_host_form CHECK origin_host = '' OR match(origin_host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',
+    CONSTRAINT origin_host_form CHECK origin_host = '' OR match(origin_host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',
     origin_harness_path LowCardinality(String) DEFAULT '',
     origin_harness      LowCardinality(String),
     origin_session_id   String,
@@ -277,7 +277,7 @@ ORDER BY (host, harness, harness_path, session_id, incarnation, owner, kind, oth
 CREATE TABLE session_lifecycle
 (
     host            LowCardinality(String),
-    CONSTRAINT host_form CHECK match(host, '^(r-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
+    CONSTRAINT host_form CHECK match(host, '^([rs]-)?[0-9a-f]{32}$') OR adapter = 'legacy',  -- sessions-model §1, host/v0; legacy rows exempt (spec §4.8)
     harness         LowCardinality(String),
     harness_path    LowCardinality(String),
     session_id      String,
