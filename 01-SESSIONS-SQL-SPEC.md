@@ -189,7 +189,10 @@ Logical columns follow; the DDL is in `schema/clickhouse.sql` (normative) and
   sha when a sibling changes. A message's header row (`part_id = ''`, `kind = 'none'`) carries
   the message's sha in both columns;
 - `rev`, `is_deleted`, and `removed` (the consumer's flag for a removed version);
-- `adapter`, `adapter_ver` and `model_version`;
+- `adapter`, `adapter_ver` and `model_version`, as the adapter's output states them (sessions §5).
+  `adapter_ver` is a string column (`LowCardinality(String)`, `text`) that holds the version
+  string as stated (`0.2.0`). The contract defines no order on versions, so no numeric encoding
+  is defined here either;
 - `ingested_at`.
 
 ### 4.1 `session_units` — the archive
@@ -199,8 +202,10 @@ Per raw unit:
   `unit_key`, `chunk` (the part number of a large unit stored in several chunks) and `sha256`;
 - **content:** `enc` (`utf8` | `b64` | `row-json` | `rows-json` | `pb-json`), `orig_sha256`
   (a `pb-json` unit, or a `row-json` unit whose compressed column `read` decoded; sessions-model
-  §3), `redacted` and `raw`;
-- **provenance:** `continuity` (the read that delivered the unit) and `captured_at`.
+  §3; null in both database profiles for a unit without one, and for a manifest), `redacted` and
+  `raw`;
+- **provenance:** `continuity` (the read that delivered the unit, a sessions §3 value) and
+  `captured_at`.
 
 `unit_key` is the decimal byte offset for a stream, the rowid or KV key for a delta
 source, and the `source_key` for a snapshot. It is never empty: `unit_key = ''` is reserved for
@@ -349,7 +354,8 @@ The fields of sessions-model §2.4:
   lives of one reused id (a Copilot `--session-id`) are two keys whenever the stating side knows
   the incarnations;
 - `through_message_id`, `ids_preserved`, `marked`, `usage_copied`;
-- `child_stored`;
+- `child_stored`: nullable in both database profiles. Null means unknown (a statement that does
+  not say, such as an origin-side one) and is never written as a default;
 - `evidence = 'explicit'`.
 
 These rows are reconciled against `live` like every adapter-owned record.
@@ -375,7 +381,7 @@ because the read manifests (§4.1) carry everything a replay needs.
 - `mode` (`stream` | `delta` | `snapshot`) and `position` (opaque);
 - `generation`;
 - `state` (the derive state) and `state_ver`;
-- `adapter` and `adapter_ver`;
+- `adapter` and `adapter_ver` (the version string, as in the entity tables);
 - `progress`, `committed_at`.
 
 It is a ReplacingMergeTree on `ver = generation·2^40 + progress`.
@@ -399,7 +405,8 @@ explains a removal; it never replaces the removed version (or tombstone) of the 
 Three `adapter` values mark rows that a session adapter did not derive from native units. They
 keep a consumer's history in the sessions-sql tables while they cannot be re-derived.
 - **`legacy`:** a row converted from memhouse 0.18's database, written before sessions-sql. It has
-  no archive, so it is never re-derived.
+  no archive, so it is never re-derived. No adapter stated a version for it: its `adapter_ver` is
+  the string `0`, as the full-row vectors below show.
   - **Its `host`** is the host/v0 value where the machine reported the pair `(old host id →
     host/v0)` before the conversion. It keeps its old host id where no pair was reported, or where
     the reported pairs conflict (one old id, two host/v0 values: a cloned machine). The host
