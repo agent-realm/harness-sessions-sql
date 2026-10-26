@@ -50,6 +50,26 @@ session adapters ──produce──▶ sessions-model records ──mapped by�
 
 ## Testing
 
+- **The guard:** this repo is public, and a pushed branch is already published. Run
+  `node scripts/guard.mjs --commits origin/main..HEAD` before you push; it must print
+  `guard: clean`. CI (`.github/workflows/guard.yml`, check `guard`) runs it on every pull request
+  and on every push to `main`.
+  - It checks the tracked files' paths and lines, and each commit's author and committer names,
+    message, every path it touches and every line it adds, for private detail: credential shapes,
+    home paths with a user name (outside web URLs), private IP addresses, e-mail addresses other
+    than noreply and reserved-name ones, machine numbers, and process wording. It prints file and
+    line, or commit, never the matched text.
+  - A false positive goes into the guard's `ALLOW` list (a line pattern, optionally limited to one
+    path), in a pull request of its own: CI runs the base branch's copy of the guard. Never reword
+    correct text, and never change a known-answer vector, to pass it.
+  - The maintainer also runs it with `--names <file>`, a local list of names that never enters the
+    repository in any form.
+  - `node scripts/guard.mjs --self-test` runs the guard's own cases. Add a case with every fix to a
+    check.
+  - A push to `main` scans only the commits it brings. **Whenever the guard's rules tighten**, run
+    it over the whole history once: `node scripts/guard.mjs --commits HEAD` locally, or the
+    workflow by hand (Actions, guard, Run workflow). A hit in old history is reported to the
+    maintainer; history is never rewritten to clear it.
 - Tests that need a database take their target from the environment, so the same suite runs
   against any disposable ClickHouse or PostgreSQL deployment.
 - Use throwaway containers only with `docker rm -f -v`.
