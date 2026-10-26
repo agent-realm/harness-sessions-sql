@@ -231,44 +231,61 @@ rows, not exemptions.
 **Read manifests: absences are archived too.** Unit rows alone cannot show that something went
 away: a source reset to empty, a source that vanished, or a delta read's `gone` keys deliver no
 units at all. So a read also archives one **read manifest** row in `session_units`, under the
-same source and generation (only a no-op read may omit it, below):
-- `unit_key = ''`, `chunk = 0`, `enc = 'manifest'`, `continuity` as read, and `sha256` of `raw`;
+same source and generation (only a read that changes nothing may omit it, below):
+- `unit_key = ''`, `chunk = 0`, `enc = 'manifest'`, `orig_sha256` null, `continuity` as in
+  `raw`, and `sha256` of `raw`;
 - `raw` is a JSON object:
-  `{"progress": <the cursor progress after this read>, "continuity": "appended" | "delta" |
-  "reset" | "snapshot", "units": [[unit_key, sha256], …], "gone": [unit_key, …],
+  `{"progress": <the session's pass counter>, "continuity": "appended" | "delta" | "reset" |
+  "snapshot" | "unchanged", "units": [[unit_key, sha256], …], "gone": [unit_key, …],
   "source_gone": true | false, "policy": "kept" | "removed"}`. `units` lists every unit this read
   delivered (for an appended stream, the new offsets), and `gone` lists the unit_keys a `delta`
   read reports vanished. `policy` appears only with `"source_gone": true` (see below);
+- **`continuity`** is the read's value as the seam returned it, from sessions §3's closed list,
+  `unchanged` included. A `source_gone` manifest records no read: its `continuity` is `reset`,
+  because it opens a generation as a reset does. `source_gone` stays a flag beside it, never a
+  continuity value: the list is closed in v1 (sessions §5), and a vanished source is the
+  consumer's decision, not a read's outcome;
+- **`progress`** is the session's pass counter. Every manifest that one pass (§5) writes for the
+  session, across all its sources, carries the same value, and a later pass a higher one. It
+  orders the manifests, and groups them by pass for replay (below);
 - a read that opens a generation (the first read of a source, every `reset` or `snapshot`)
   writes its manifest even when it delivers nothing, and a source that vanished gets a new
   generation whose manifest says `"source_gone": true`;
-- a read that opens no generation, delivers no units and no `gone` keys, and does not report
-  `source_gone` MAY omit its manifest (an appended read with no new complete line, a delta read
-  with nothing to report). Such a read adds nothing to the replay fold. Its `progress` is not
-  needed either: replay reads `progress` from the archive only to order manifests, and a read
-  that changes no record assigns no `rev` (§7). `source_gone` is never a no-op: it is always
-  archived;
+- a read that opens no generation, does not report `source_gone`, and changes nothing in the fold
+  MAY omit its manifest. It changes nothing when the generation already holds every unit it lists,
+  with the same `sha256`, and no longer holds any key in its `gone`: an `unchanged` read, an
+  appended read with no new complete line, a delta read that repeats what the generation holds.
+  Such a read adds nothing to the replay fold. Its `progress` is not needed either: replay reads
+  `progress` from the archive only to order and group manifests, and a read that changes no
+  record assigns no `rev` (§7). `source_gone` is never a no-op: it is always archived;
 - a vanished source is not an empty one. A source that is still listed but reset to empty is an
   empty source, and its records leave `live`. A source the harness store no longer has (the
   session's file deleted, so `list` omits it) is consumer policy: the sessions contract only
   says `list` omits it. So its manifest records what the consumer did live, as
   `"policy": "kept"` (its records stay current, the archive outlives the harness store) or
   `"policy": "removed"` (they were removed or tombstoned). The policy is recorded per event, so a
-  consumer that changes its policy later still replays each earlier event as it was handled.
+  consumer that changes its policy later still replays each earlier event as it was handled;
+- `"policy": "removed"` removes the source's units, and with them every record derived from them.
+  It does not decide whether the session itself still exists: the session record stays current
+  while the adapter's derive over the session's remaining units lists it in `live`.
 
 **Replay from the archive alone.** For each source, the highest generation in `session_units` is
 current. A generation with a manifest and no units is an empty source, and replays as empty. A
 `source_gone` generation replays as its `policy` says: `"kept"` replays the last generation before
 it as current, and `"removed"` replays as empty. A `source_gone` manifest without `policy`
 (written before `policy` existed) replays as `"removed"`, so older archives keep their meaning.
-Within the current generation,
-the manifests are folded in `progress` order: each adds its `units` and drops its `gone`.
-Delivery order is the manifests' `progress` and, within one manifest, the order of its `units`
-array, never the table's sort key: `unit_key` is a string, so a stream's offsets sort `'100'`
-before `'20'`. That
-gives exactly the units each read left current, so replaying `session_units` through `derive`
-reproduces every removal without the entity tables or the cursor. `session_sources` (§4.6) is
-only a cursor: it keeps the latest row per source, so it can never serve as history.
+Within the current generation, the manifests are folded in `progress` order: each adds its `units`
+and drops its `gone`. Delivery order is the manifests' `progress` and, within one manifest, the
+order of its `units` array, never the table's sort key: `unit_key` is a string, so a stream's
+offsets sort `'100'` before `'20'`.
+
+Replay derives a session **once per pass**: it folds every manifest of one `progress` value, each
+source's latest generation so far being current, and then derives, as the live pass derived once
+after all its reads. Deriving after each manifest instead could remove a key that was live only
+between two sources' reads, which the live pass never removed. That gives exactly the units each
+pass left current, so replaying `session_units` through `derive` reproduces every removal without
+the entity tables or the cursor. `session_sources` (§4.6) is only a cursor: it keeps the latest row
+per source, so it can never serve as history.
 
 ### 4.2 `sessions`
 
@@ -313,7 +330,11 @@ Part fields:
   message's (sessions-model §2.3: an injected part in a user's message, a part a revert hides
   inside a message that stays); `''` where the part has none of its own.
 
-A message-level change revises every part row of that message at the new `rev`.
+A message-level change revises every part row of that message at the new `rev`. A row the revised
+message no longer has gets a removed version, as a key that left `live` does (principle 3): a
+part the message lost, its header row (`part_id = ''`) once it has parts, or its part rows once it
+has none. It is never physically deleted: that would drop it from history, and the live pass
+would no longer match its replay.
 
 ### 4.4 `session_usage`
 
@@ -367,8 +388,14 @@ session, with the origin as the other side. It carries:
 - `verified`;
 - the keys of the supporting statements.
 
+An edge is written only when both its ends resolve to exactly one held session each
+(sessions-model §2.5, resolution). Until then its statements wait, and no edge row exists. Its
+references follow the statements' convention: an empty `host` and `harness_path`, in `other_*`,
+`child_*` and `origin_*`, mean the child's own harness store.
+
 An edge is **never reconciled against an adapter's `live`**. It ends when its last supporting
-statement is removed, or when re-verification of an inferred edge fails.
+statement is removed, or when re-verification of an inferred edge fails. An edge that ends gets a
+removed version, like a key that left `live` (principle 3), never a physical deletion.
 Billing reads edges only, so inherited usage is billed once.
 
 ### 4.6 `session_sources` (informative)
@@ -382,7 +409,7 @@ because the read manifests (§4.1) carry everything a replay needs.
 - `generation`;
 - `state` (the derive state) and `state_ver`;
 - `adapter` and `adapter_ver` (the version string, as in the entity tables);
-- `progress`, `committed_at`.
+- `progress` (the session's pass counter, §4.1), `committed_at`.
 
 It is a ReplacingMergeTree on `ver = generation·2^40 + progress`.
 
@@ -412,9 +439,11 @@ keep a consumer's history in the sessions-sql tables while they cannot be re-der
     the reported pairs conflict (one old id, two host/v0 values: a cloned machine). The host
     form check exempts exactly these rows: `host` matches host/v0 OR `adapter = 'legacy'`. The
     link reference hosts (`other_host`, `child_host`, `origin_host`) get the same exemption.
-  - **A `legacy` row exists only in the database profile its conversion ran in.** A conversion
-    reads one source database (a consumer's memhouse 0.18 database, which is ClickHouse) inside
-    that engine, so the database profile parity check (§8) leaves `legacy` rows out.
+  - **A `legacy` row exists only in a ClickHouse database profile.** Legacy conversion exists only
+    for ClickHouse houses: it reads a consumer's memhouse 0.18 database, which is ClickHouse,
+    inside that engine. A PostgreSQL database profile holds no `legacy` row, so both legacy items
+    of §8 are ClickHouse database profile items, and the database profile parity check (§8)
+    leaves `legacy` rows out.
   - **Its `content_sha`** is computed where the conversion runs, in SQL, so the same source row
     always converts to the same sha. It is the lowercase sha256 hex of one TabSeparated line:
     the row's columns, in this specification's DDL order for that table, leaving out
@@ -527,12 +556,14 @@ keep a consumer's history in the sessions-sql tables while they cannot be re-der
 
 For one data folder and one session, in each pass:
 1. `read` each source, and archive the units and the read's manifest (`session_units`, §4.1),
-   including a read that delivered nothing.
+   including a read that delivered nothing; only a read that changes nothing in the fold may go
+   without one. Every manifest of the pass carries the session's next pass counter as `progress`.
 2. `derive`. Upsert the `changed` records at `rev`.
 3. Write a removed version of each adapter-owned key held for the session and absent from `live`
    (plan; a tombstoning consumer writes a tombstone instead). This happens after **every**
    derive, as sessions §4 requires.
-4. Recompute the session's edges (`owner = 'engine'` rows).
+4. Recompute the session's edges (`owner = 'engine'` rows): write an edge whose ends now both
+   resolve, and a removed version of one whose last supporting statement left (§4.5).
 5. Advance the cursor (`session_sources`).
 
 A crash between any two steps is repaired by re-running the pass: every step is idempotent, and
