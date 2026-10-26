@@ -334,25 +334,35 @@ export function rewind(adapters) {
 // the parent's `task` call states the child, so an engine merges one edge, `stated_on: both`.
 // Pass 2 re-derives the child alone (its title changes). Pass 3 removes both statements: the
 // child's parent_id is cleared and the parent's task part deleted.
-export const EDGE_PAIR = { child: 'ses_15e9c81a20016kUmgT3Q5hrPYH', origin: 'ses_15e9c75ea001aF3AjM15syNKQ3', at: '01M5FA14606SC8K5NP9K6CTMED' };
+// The pair is found in the fixture's database, not named here: the one session with a parent, its
+// parent, and the parent's one `task` part, whose callID is the statement's `at`.
+function edgePair(fx, db) {
+  const kids = fx.query(db, 'SELECT id, parent_id FROM session WHERE parent_id IS NOT NULL');
+  if (kids.length !== 1) throw new Error(`opencode/features: expected one child session, found ${kids.length}`);
+  const [{ id: child, parent_id: origin }] = kids;
+  const task = fx.query(db, "SELECT id, data FROM part WHERE session_id = ? AND data LIKE '%\"tool\":\"task\"%'", [origin]);
+  if (task.length !== 1) throw new Error(`opencode/features: expected one task part, found ${task.length}`);
+  return { child, origin, at: JSON.parse(task[0].data).callID, taskPart: task[0].id };
+}
 
 export function edges(adapters) {
+  let pair;
   const passes = withFixture(adapters, 'opencode', 'features', {}, (fx) => {
     const db = path.relative(fx.dir, fx.harnessPath);
+    pair = edgePair(fx, db);
     const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
     const p1 = r.pass();
-    fx.sql(db, [["UPDATE session SET title = title || ' (renamed)', time_updated = time_updated + 1 WHERE id = ?", [EDGE_PAIR.child]]]);
-    const p2 = r.pass({ only: (sid) => sid === EDGE_PAIR.child });
-    const task = fx.query(db, "SELECT id FROM part WHERE session_id = ? AND data LIKE '%\"tool\":\"task\"%'", [EDGE_PAIR.origin]);
-    if (task.length !== 1) throw new Error(`opencode/features: expected one task part, found ${task.length}`);
+    fx.sql(db, [["UPDATE session SET title = title || ' (renamed)', time_updated = time_updated + 1 WHERE id = ?", [pair.child]]]);
+    const p2 = r.pass({ only: (sid) => sid === pair.child });
     fx.sql(db, [
-      ['UPDATE session SET parent_id = NULL, time_updated = time_updated + 1 WHERE id = ?', [EDGE_PAIR.child]],
-      ['DELETE FROM part WHERE id = ?', [task[0].id]],
+      ['UPDATE session SET parent_id = NULL, time_updated = time_updated + 1 WHERE id = ?', [pair.child]],
+      ['DELETE FROM part WHERE id = ?', [pair.taskPart]],
     ]);
-    const p3 = r.pass({ only: (sid) => sid === EDGE_PAIR.child || sid === EDGE_PAIR.origin });
+    const p3 = r.pass({ only: (sid) => sid === pair.child || sid === pair.origin });
     return [p1, p2, p3];
   });
-  return { name: 'edges', passes, pair: EDGE_PAIR };
+  const { child, origin, at } = pair;
+  return { name: 'edges', passes, pair: { child, origin, at } };
 }
 
 // The four absences of spec §4.1, each in its own sessions, in pass 2:
@@ -386,8 +396,9 @@ export function absences(adapters) {
     const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
     const p1 = r.pass();
     // The last message of the parent of the edge pair: a delta read reports it gone.
-    const msg = fx.query(db, 'SELECT id FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1', [EDGE_PAIR.origin]);
-    meta.gone = { session_id: EDGE_PAIR.origin, message_id: msg[0].id };
+    const { origin } = edgePair(fx, db);
+    const msg = fx.query(db, 'SELECT id FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1', [origin]);
+    meta.gone = { session_id: origin, message_id: msg[0].id };
     fx.sql(db, [['DELETE FROM part WHERE message_id = ?', [msg[0].id]], ['DELETE FROM message WHERE id = ?', [msg[0].id]]]);
     return [p1, r.pass()];
   });
