@@ -596,21 +596,38 @@ them.
 
 ## 8. Conformance
 
-A database conforms to `sessions-sql` v0 when:
+A database conforms to `sessions-sql` v1 when every item below holds. An item marked
+**(ClickHouse database profile)** applies to that database profile only, and does not apply to a
+PostgreSQL one.
+
+**Envelopes.** The items that run an engine feed it **envelopes**. An envelope is one of:
+- one read of one source as the `sessions` seam delivers it (sessions §2: `continuity`, `units`,
+  `gone`, `position`, `held_back`), with its store, session and `source_key`, and the position it
+  was read from (`from`; none for a first read);
+- a consumer's `source_gone` decision for a source the harness store no longer has, with its
+  `policy` (`kept` or `removed`, §4.1).
+
+A **pass** is the envelopes one run of §5 ingests. The seam needs no change for this: an envelope
+is what a consumer holds after a `read`, or after deciding on a vanished source.
 
 - [ ] Every table and key of §3 exists in the database profile's DDL, under the deployment's
       physical table names (§3), with each table's identity columns as its key set
       (`session_sources` is informative and may be absent). An entity row is physically deleted only for a true duplicate, for a
       key an upgraded adapter no longer produces (§2, principle 3), or as a tombstoning consumer's
       tombstone.
-- [ ] **Twice is once:** ingesting the same envelopes twice gives no duplicate logical rows in
-      any table.
-- [ ] **Crash-safe:** killing the pass between the archive write and the cursor write, then
-      re-running it, gives equal row counts and equal current state.
+- [ ] **Twice is once:** ingesting the same envelopes again adds no version of any entity row, no
+      cursor row version, no unit row and no generation. It may add read manifests that deliver
+      nothing new: in a generation that already exists, not `source_gone`, listing only units that
+      generation already holds and only `gone` keys it already reported.
+- [ ] **Crash-safe:** killing the pass at the minimum crash point, right after the archive write
+      and before the cursor write, then re-running it, gives equal row counts and equal current
+      state. An engine may declare further crash points (after its entity writes, its removed
+      versions, its edges), and the item holds at each of them too.
 - [ ] **Removed equals not live:** after each pass, a session's current adapter-owned keys (not
-      deleted, not removed) are exactly that pass's `live` sets. Every key that left `live` has a
-      removed version, or a tombstone for a tombstoning consumer (sessions §4 allows either),
-      and none of them counts in totals.
+      deleted, not removed) are exactly that pass's `live` sets plus each key in `held` that was
+      written before (sessions §2: a held key's last written version stands). Every key that left
+      `live` and `held` has a removed version, or a tombstone for a tombstoning consumer
+      (sessions §4 allows either), and none of them counts in totals.
 - [ ] **Edges outlive statements correctly:** re-deriving the child alone keeps a merged edge
       (`owner = 'engine'`) while the parent's statement stands. Removing every supporting
       statement ends it.
@@ -629,29 +646,42 @@ A database conforms to `sessions-sql` v0 when:
       unless its `adapter` names an exemption of §4.8. Engine-owned edges (§4.5, `owner =
       'engine'`) are normal rows, outside this check. Neither manifests nor engine edges are
       exemptions, so every replay check applies to them.
-- [ ] **Legacy content_sha, line format:** each of §4.8's known-answer vectors (column values,
-      their TabSeparated line, its sha) gives the same sha through the implementation's SQL.
-- [ ] **Legacy content_sha, whole rows:** for each of §4.8's full-row vectors, the conversion
-      of that row gives that line and that `content_sha`.
+- [ ] **Legacy content_sha, line format (ClickHouse database profile):** each of §4.8's
+      known-answer vectors (column values, their TabSeparated line, its sha) gives the same sha
+      through the implementation's SQL.
+- [ ] **Legacy content_sha, whole rows (ClickHouse database profile),** in two halves, for each
+      of §4.8's full-row vectors:
+      - *the database half:* the vector's fields, loaded by column name into the deployed table,
+        format back in this specification's DDL order into that line and that `content_sha`;
+      - *the conversion half:* the implementation's conversion of that row gives that line and
+        that `content_sha`. The implementation proves it with its own known-answer tests, and
+        its conformance report names them; v1 defines no conversion interface for a conformance
+        run.
 - [ ] **Two hosts, two sessions:** a data folder copied to a second host gives a second set of
       sessions, with the same `session_id`s and different session keys.
 - [ ] **Absences replay:** a still-listed source reset to empty, a vanished source handled as
       `"policy": "kept"`, a vanished source handled as `"policy": "removed"`, and a delta read's
       `gone` keys, each replayed from `session_units` alone (no entity table, no cursor), give the
-      same current state as the live pass, removed versions included.
-- [ ] **No-op manifests:** a pass that omits the manifest of a read that opened no generation and
-      delivered nothing replays to the same current state as a pass that writes it.
+      same current state as the live pass, with the adapter-owned rows' removed versions. Replay
+      rebuilds the current edges, not the removed versions of edges that ended: it folds each
+      session alone, and the order of passes across sessions is not archived.
+- [ ] **No-op manifests:** a pass that omits the manifest of a read that changes nothing in the
+      fold (§4.1) replays to the same current state as a pass that writes it.
 - [ ] **Re-derive from the archive:** a new `adapter_ver` replayed from `session_units` alone
-      writes higher `rev`s, and physically deletes only the keys the new version no longer
-      produces.
-- [ ] **Null is unknown:** usage counters, `exit_code` and `output_ref_bytes` that the adapter
-      emitted as null stay null in every database profile, and a part's own `source` or `state` survives
+      writes higher `rev`s, every row it writes carries that `adapter_ver` as the adapter states
+      it, and it physically deletes only the keys the new version no longer produces.
+- [ ] **Null is unknown:** usage counters, `exit_code`, `output_ref_bytes` and a statement's
+      `child_stored` that the adapter emitted as null, and the `orig_sha256` of a unit without
+      one, stay null in every database profile, and a part's own `source` or `state` survives
       beside its message's.
-- [ ] **Redaction holds:** the sentinel-secret fixtures leave no sentinel value in any table.
+- [ ] **Redaction holds:** on the sentinel-secret fixtures, no value the adapter redacted on a
+      declared redaction path (sessions-model §4) is in any table, and no row holds a planted
+      value that the unit or record it was written from did not hold. Free text an adapter keeps
+      on purpose (sessions-model §4 rule 6) is the adapter's contract, not storage's.
 - [ ] **Database profile parity:** ClickHouse and PostgreSQL, fed the same envelopes, give the same
       current state, compared as sets of `(key, content_sha)`, with `message_content_sha` added
-      for `session_parts`. `legacy` rows are left out: each
-      exists only in the database profile its conversion ran in (§4.8).
+      for `session_parts`. `legacy` rows are left out: they exist only in a ClickHouse database
+      profile (§4.8).
 
 ## 9. Status
 
