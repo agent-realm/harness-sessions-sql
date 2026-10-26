@@ -9,7 +9,8 @@ working on this repo.
   records of sessions-model v1 to tables, keys, revisions and deletions.
 - **Database profiles**: ClickHouse (normative) and Postgres, over the same logical tables. Both are
   drafted in `schema/`.
-- **A conformance suite** that proves an implementation of the mapping. It is not written yet.
+- **A conformance kit** (`conformance/`) that proves an implementation of the mapping, run against
+  a ClickHouse or PostgreSQL target taken from the environment.
 
 **Status: v0 draft,** begun 2026-10-22.
 
