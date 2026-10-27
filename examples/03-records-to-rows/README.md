@@ -28,10 +28,11 @@ session whole, its messages in order, its tool calls with their results, and its
   - its parts in order: by `order_key` (sessions-model's `order`, a reserved word in SQL), then
     `ts`, then the part's native order;
   - a tool call with its result: two part rows of one session joined on `call_id`;
-  - usage totals as [§4.4] defines them: total input is `input`, plus `cache_read + cache_write`
-    where `input_includes_cache` is false, plus `tool_prompt` where it is not null; total output
-    is `output`, plus `reasoning` where `output_includes_reasoning` is false. The records carry
-    Anthropic-style counts (cached input beside `input`, reasoning inside `output`).
+  - usage totals as [§4.4] defines them: the stored counts added up as `input_includes_cache` and
+    `output_includes_reasoning` say. The records carry Anthropic-style counts (cached input beside
+    `input`, reasoning inside `output`), and set both flags. Where a flag is null, §4.4 does not
+    say what the total is; the example's SQL leaves it null (unknown), a choice of its own while
+    that question is open.
 
 Every row is written at `rev` 1 with a plain insert into empty tables, through the kit's
 `insertRows`: a first write. Later versions follow the write rule that

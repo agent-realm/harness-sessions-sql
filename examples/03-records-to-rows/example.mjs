@@ -102,9 +102,9 @@ await runExample({
         WHERE c.kind = 'tool_call' AND r.kind = 'tool_result' AND ${current('c.')} AND ${current('r.')}
         ORDER BY c.order_key`)));
 
-      // Spec §4.4: total input is input, plus cache_read + cache_write where input_includes_cache
-      // is false, plus tool_prompt where it is not null; total output is output, plus reasoning
-      // where output_includes_reasoning is false. A flag that is null leaves the total unknown.
+      // The totals of spec §4.4: the stored counts, added up as the two flags say. Where a flag is
+      // null, §4.4 does not say what the total is: this SQL leaves it null (unknown), a choice of
+      // this example's own while that question is open. This example's records set both flags.
       console.log('usage, with the totals of spec §4.4:');
       console.log(table(await db.query(`
         SELECT usage_id, input, cache_read, cache_write, output,
