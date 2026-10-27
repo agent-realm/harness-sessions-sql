@@ -1,25 +1,35 @@
 # Add a column without breaking conformance
 
-A deployment's tables need not be exactly [`schema/`](../../schema/)'s. This page says what
-[§3][s3] lets a deployment change, what the conformance kit accepts, what breaks conformance, and
-shows a `tenant` column added on both profiles with the kit staying green.
+A deployment may add to [`schema/`](../../schema/)'s tables. This page lists what it may add and
+where the specification says so, what it may leave out, what the conformance kit accepts, and what
+breaks conformance, and shows a `tenant` column added on both profiles with the kit staying green.
 
 ## What a deployment may add
 
-All of it is in [§3 Keys and versioning][s3]:
-
-- **Physical names.** A prefix on every table name (one per tenant of a shared database, say), and
-  `session_units` in a database of its own. The deployment says so in one place, such as its
-  schema template.
-- **A sort-key prefix (ClickHouse).** An `ORDER BY` holds a table's identity columns as a set, in
-  the deployment's order, and may begin with columns that never change for a key, such as
-  `toDate(ts)` for messages. A Nullable column there needs `SETTINGS allow_nullable_key = 1`.
+- **Physical names** ([§3][s3]). A prefix on every table name (one per tenant of a shared database,
+  say), and `session_units` in a database of its own. The deployment says so in one place, such as
+  its schema template.
+- **A sort-key prefix, in ClickHouse** ([§3][s3]). An `ORDER BY` holds a table's identity columns
+  as a set, in the deployment's order, and may begin with columns that never change for a key,
+  such as `toDate(ts)` for messages; a Nullable column there needs
+  `SETTINGS allow_nullable_key = 1`. Which columns qualify is still open
+  ([SPEC-QUESTIONS.md, question 26][q26]).
 - **Tables of its own** beside the §3 tables, such as a table of tool calls derived from
-  `session_parts`.
-- **Derived columns**, under §3's rules: values from the session's own current records only,
+  `session_parts` ([§3][s3]).
+- **Derived columns**, under [§3][s3]'s rules: values from the session's own current records only,
   recomputed when a record they copy changes, never in a key or a `content_sha`.
-- **Columns of its own.** [§4.8][s48] leaves "any column a deployment adds" out of a legacy row's
-  line, and the kit's test engine for such a column adds `tenant`.
+- **Columns of its own**, such as a tenant or a consumer's first-seen time. The specification
+  expects them ([§4.8][s48] leaves "any column a deployment adds" out of a legacy row's line, and
+  §3 keeps a first-seen time "in a column of its own"), but §3's rules are written for derived
+  columns only, so what such a column may hold is an open question
+  ([SPEC-QUESTIONS.md, question 35][q35]). The kit judges it as it judges a derived column, and the
+  worked `tenant` column below rests on that reading.
+
+## What a deployment may leave out
+
+- **`writer`**, where the deployment does not use per-principal writes ([§2][s2], principle 5).
+- **`session_sources`**, the informative cursor table ([§4.6][s46]; §8's first item lets it be
+  absent). Some of the kit's checks still read or write it ([SPEC-QUESTIONS.md, question 27][q27]).
 
 ## What the kit accepts
 
@@ -29,7 +39,7 @@ Its test engines in [`conformance/test/engines/`](../../conformance/test/engines
 
 | Addition | Kit check | Test engine |
 |---|---|---|
-| `toDate(ts)` before a ClickHouse sort key | 1, Tables and keys: `ts`, or one function of `ts`, before the identity columns; nothing else | `sort-key-prefix.mjs` |
+| `toDate(ts)` before a ClickHouse sort key | 1, Tables and keys: `ts`, or one function of `ts`, before the identity columns, and nothing else; the kit's reading of an open question ([26][q26]) | `sort-key-prefix.mjs` |
 | a column of the deployment's, with a default | 12, Legacy content_sha, whole rows: the column is left out of the line, and named in the notes | `added-column.mjs` |
 | a table of the deployment's own | 9, No time partition: the table is left alone | `extra-table.mjs` |
 | a derived column | 18, Redaction holds: the column is judged against the records of its row's session | `derived-column.mjs` |
@@ -39,8 +49,10 @@ A column the deployment adds needs a default, or the kit's own synthetic rows ar
 
 ## What breaks conformance
 
-- **A key that is not the identity.** An extra column in an `ORDER BY` or a primary key (other than
-  the `ts` prefix above), or a missing one, fails Tables and keys.
+- **A key that is not the identity.** A missing identity column, or an extra one in a primary key,
+  fails Tables and keys. In a ClickHouse `ORDER BY`, the kit accepts `ts` or one function of `ts`
+  before the identity columns and fails any other extra element: its reading of §3, while
+  [question 26][q26] is open.
 - **A `content_sha` with other inputs.** A record's `content_sha` is the sha256 of its canonical
   JSON ([§4][s4]); a column of the deployment's, derived or not, never enters it. A row whose shas
   are not those of its record fails Removed equals not live and Units only.
@@ -48,6 +60,10 @@ A column the deployment adds needs a default, or the kit's own synthetic rows ar
 - **A derived column that keeps what its session no longer holds**, such as a removed message's
   text, or takes another session's values: Redaction holds fails (`derived-column-stale.mjs`,
   `derived-column-copied.mjs`).
+
+For more, every change the kit's self-test makes to the reference engine or to `schema/`, listed
+in [`conformance/reference/faults.mjs`](../../conformance/reference/faults.mjs), breaks conformance:
+each check names the faults it must catch, and fails against each of them.
 
 ## Worked: a `tenant` column on both profiles
 
@@ -98,3 +114,8 @@ column in the DDL text instead of by `ALTER`.
 [s4]: ../../01-SESSIONS-SQL-SPEC.md#4-schema
 [s48]: ../../01-SESSIONS-SQL-SPEC.md#48-rows-no-adapter-derived-legacy-memhouse-bridge-memhouse-log
 [plug]: ../../conformance/README.md#plugging-in-an-engine
+[s2]: ../../01-SESSIONS-SQL-SPEC.md#2-core-principles
+[s46]: ../../01-SESSIONS-SQL-SPEC.md#46-session_sources-informative
+[q26]: ../../conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle
+[q27]: ../../conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle
+[q35]: ../../conformance/SPEC-QUESTIONS.md#columns-a-deployment-adds-beyond-derived-ones
