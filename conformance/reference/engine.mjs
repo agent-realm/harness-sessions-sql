@@ -47,8 +47,13 @@ export const ENGINE_FAULTS = new Set([
   'ignore-crash', 'no-rerun-bump', 'part-sha-no-nulls', 'chunk-drop', 'pg-partial-upsert',
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
   'manifest-whole-generation', 'encode-adapter-ver', 'child-stored-default', 'orig-sha-zero',
-  'derived-stale', 'derived-other-session',
+  'derived-stale', 'derived-other-session', 'replay-current-policy',
 ]);
+
+// Fault `replay-current-policy`: the deployment's current vanish policy, the one its latest vanish
+// decision applied. Process-wide, as a deployment's setting is, so a replay on another instance
+// sees it.
+let currentPolicy = null;
 
 // The derived column `sessions.first_prompt` (the `firstPrompt` option), per profile.
 const FIRST_PROMPT = { clickhouse: "first_prompt     String DEFAULT ''", postgres: "first_prompt     text NOT NULL DEFAULT ''" };
@@ -98,6 +103,8 @@ class ReferenceEngine {
     this.name = name;
     this.version = version;
     this.removal = 'removed';
+    // Both vanish policies (§4.1), each recorded in its source_gone manifest and replayed from it.
+    this.vanishPolicies = ['kept', 'removed'];
     this.crashPoints = ['archive', 'entities', 'removed', 'edges'];
     // Fault `chunk-drop`: chunked units lose their last chunk in the archive; the engine derives
     // from the reads it holds in memory, so only the archive is wrong.
@@ -269,6 +276,7 @@ class ReferenceEngine {
       // Fault `policy-kept-as-removed`: a vanished source the consumer keeps is removed, live and
       // in the manifest alike, so a replay agrees with the live state and both are wrong.
       const policy = F.has('policy-kept-as-removed') ? 'removed' : e.policy;
+      currentPolicy = policy;
       state = { generation, units: policy === 'kept' ? (c?.units ?? []) : [], gone: true, policy, position: '', mode: c?.mode ?? e.mode ?? '', progress };
       // A vanished source opens a generation with no read: its manifest's continuity is `reset`.
       manifest = { progress, continuity: 'reset', units: [], gone: [], source_gone: true, policy };
@@ -600,7 +608,9 @@ class ReferenceEngine {
         const prev = sources.get(row.source_key);
         const generation = Number(row.generation);
         if (m.source_gone) {
-          const policy = F.has('ignore-policy') ? 'removed' : (m.policy ?? 'removed');
+          // Fault `replay-current-policy`: the current setting, not the policy the manifest records.
+          const recorded = F.has('replay-current-policy') && currentPolicy ? currentPolicy : (m.policy ?? 'removed');
+          const policy = F.has('ignore-policy') ? 'removed' : recorded;
           sources.set(row.source_key, { generation, units: policy === 'kept' ? new Map(prev?.units ?? []) : new Map() });
         } else if (!prev || prev.generation !== generation || F.has('replay-last-manifest')) {
           sources.set(row.source_key, { generation, units: new Map(m.units) });

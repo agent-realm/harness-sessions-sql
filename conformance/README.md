@@ -134,7 +134,8 @@ compares an engine with the reference engine.
 
 ## The checks
 
-Each check has a **database** part, an **engine** part, or both, and each part is its own row:
+Each check has a **database** part, an **engine** part, or both (Absences replay has four engine
+parts, one per case), and each part is its own row:
 
 - **Database parts** prove the DDL and SQL of a profile, with no engine: the catalogue, plain
   inserts. They test the engine's own DDL, which the engine supplies through `createTables`
@@ -160,7 +161,7 @@ Each check has a **database** part, an **engine** part, or both, and each part i
 | 11 | Legacy content_sha, line format | engine | each §4.8 known-answer vector gives its line and its sha through the engine's legacy SQL (a ClickHouse database profile item; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
 | 12 | Legacy content_sha, whole rows | database, engine | the database half: each §4.8 full-row vector, loaded by column name into the deployed table, formats back in DDL order into its line and its sha, a column the deployment adds left out of the line (§4.8): the database part through §4.8's own expression (the DDL), the engine part through the engine's legacy SQL, which counts in the verdict even when the database part is a self-check. The conversion half is the implementation's own known-answer tests, which its conformance report names (a ClickHouse database profile item; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
 | 13 | Two hosts, two sessions | engine | one harness store read under two hosts gives every session under both, two session keys, each with all its records in every entity table |
-| 14 | Absences replay | engine | for the four absences (a source reset to empty, a vanished source kept, one removed, a delta's gone keys): after each live pass, the records against the contract and the kit's fold of the archive against the reads; every manifest against §4.1; then the archive alone, copied and replayed, gives the live namespace's adapter-owned rows, removed versions included, and its current edges |
+| 14 | Absences replay | engine (four parts) | for each absence: after each live pass, the records against the contract and the kit's fold of the archive against the reads; every manifest against §4.1; then the archive alone, copied and replayed, gives the live namespace's adapter-owned rows, removed versions included, and its current edges. One part per case: a source reset to empty and a delta's gone keys; a vanished source kept; one removed; and, for an engine that offers both, a policy changed between passes, in both orders, each event replaying under the policy its manifest records. A vanish policy the engine does not declare (`vanishPolicies`) is n/a, with the declaration as the reason; an engine that declares none is checked against both |
 | 15 | No-op manifests | engine | the archive replayed with and without its no-op manifests (those of reads that change nothing in the fold, §4.1; left out by their whole identity) gives the same state |
 | 16 | Re-derive from the archive | engine | a replay with the kit's bumped adapters (next patch version, every usage record re-keyed) rewrites every record it produces at a higher `rev`, each row carrying the new `adapter_ver` exactly as the adapter states it, and physically deletes exactly the records it no longer produces |
 | 17 | Null is unknown | database, engine | null counters, flags, `exit_code`, `output_ref_bytes`, `output_len`, `child_stored` and `orig_sha256` read back null, and a part's own source and state survive beside its message's; then every such field of the broad scenario equals what the adapter emitted, every statement's `child_stored` included, every unit's `orig_sha256` is the unit's own or null, and a tool result whose newer version has no output reference keeps none |
@@ -183,7 +184,8 @@ make it fail:
   only the engine's replay reads, a part sha computed without its null members, a chunk lost, a
   PostgreSQL upsert that keeps a column the new version lost, `adapter_ver` stored as an integer
   encoding, a null `child_stored` written as true, a missing `orig_sha256` written as `''`, a
-  derived column that keeps a removed message's text or takes another session's, and so on);
+  derived column that keeps a removed message's text or takes another session's, a replay that
+  applies the current vanish policy instead of the one each manifest records, and so on);
 - **DDL faults** are a faulty implementation DDL, supplied through the reference engine's
   `createTables` as any engine's would be: a key column dropped, a registry turned into a closed
   list, the host check removed or unanchored, a time partition, a non-Nullable `ts` or counter, an
@@ -202,7 +204,9 @@ must accept or a fault in an engine's own code the kit must catch:
   one with no legacy SQL; one with no DDL and a wrong legacy SQL; one that hides its cursor and
   ignores its later crash points (not proven), and one that exposes it and ignores them (fails);
   one whose derived column keeps a removed message's text, and one whose derived column takes
-  another session's; two whose errors quote a URL with a password the kit was never given, which it must not print.
+  another session's; one that keeps every vanished source and declares `vanishPolicies: ['kept']`
+  (accepted, its removed parts n/a), and the same with no declaration (checked against both, so
+  its removed parts fail); two whose errors quote a URL with a password the kit was never given, which it must not print.
 
 ## Plugging in an engine
 
@@ -235,6 +239,7 @@ Both receive:
 | `cursor()` | optional: the engine's committed cursor as it is stored (any JSON value), read from its store, so that any instance on the namespace returns the same. Crash-safe compares it before and after each stop. Without it the kit reads session_sources; an engine that keeps its cursor elsewhere (§4.6 allows it) and has no `cursor()` gets Crash-safe reported not proven |
 | `replay({adapterVer})` | re-derive every session from session_units alone. `adapterVer` is `{harness: version}`: replay with that adapter version, which the kit supplies through `adapters.adapterFor` |
 | `removal` | optional: `'removed'` (default) for removed versions, `'tombstone'` for a tombstoning engine |
+| `vanishPolicies` | optional: the vanish policies (§4.1) the engine implements, at least one of `'kept'` and `'removed'` (`['kept']`, `['removed']` or both). Absences replay checks each declared policy and reports the other n/a, with the declaration as the reason; without it, both are checked, so a missing declaration never skips a check. Anything else (an empty list, another value) fails the item |
 | `legacySha(exprs)` | optional, ClickHouse: `{line, sql, settings}`, the engine's SQL of a legacy TabSeparated line and its sha over the column expressions. Without it the two legacy checks are skipped: they prove the implementation's SQL |
 
 The kit reads the tables itself with §6's queries; it never asks the engine for its state. An
@@ -255,7 +260,8 @@ back pass by pass) and the source's current unit list. A read whose `from` is no
 position is stale and ignored, except a read from scratch, which moves only the position when it
 delivers the units the source holds and otherwise opens a generation. A re-run that reads other
 content than a crashed pass archived opens a generation of its own. Every PostgreSQL upsert writes
-the table's whole column list. Its `chunkBytes` option stores large units in several chunks, and
+the table's whole column list. It declares both vanish policies and records each in its
+`source_gone` manifest, which its replay follows. Its `chunkBytes` option stores large units in several chunks, and
 its `firstPrompt` option keeps a derived column (spec §3), `sessions.first_prompt`, recomputed
 from the session's current rows after every pass and written as a new version where it changed. It
 stores `adapter_ver` as the adapter states it, keeps a statement's null `child_stored`, and writes

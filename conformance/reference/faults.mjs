@@ -147,4 +147,5 @@ export const FAULT_NOTES = {
   'engine:orig-sha-zero': "a unit's missing orig_sha256 written as '' instead of null",
   'engine:derived-stale': "a derived column (sessions.first_prompt) computed once and never again, so it keeps a removed message's text",
   'engine:derived-other-session': "a derived column (sessions.first_prompt) taken from another session's records",
+  'engine:replay-current-policy': "replay applies the current vanish policy (the latest decision's) to every vanished source, not the policy each manifest records",
 };

@@ -384,44 +384,59 @@ export function edges(adapters) {
   return { name: 'edges', passes, pair: { child, origin, at } };
 }
 
-// The four absences of spec §4.1, each in its own sessions, in pass 2:
-// - reset: a still-listed source reset to empty (a Claude Code main file rewritten empty);
-// - kept / removed: a vanished source, handled as "kept" and as "removed" (two Codex rollout
-//   files deleted, so list omits their sessions);
-// - gone: a delta read's gone keys (an OpenCode message row and its parts deleted).
-export function absences(adapters) {
+// The absences of spec §4.1, each in its own sessions:
+// - reset: a still-listed source reset to empty (a Claude Code main file rewritten empty), in
+//   pass 2;
+// - gone: a delta read's gone keys (an OpenCode message row and its parts deleted), in pass 2;
+// - vanished: a source the harness store no longer has, handled under a vanish policy (Codex
+//   rollout files deleted, so list omits their sessions). `vanish` lists the policies, one Codex
+//   session each, the i-th vanishing in pass i + 2: `['kept']`, `['removed']`, or both in either
+//   order, a consumer whose policy changes between passes.
+// `resetAndGone: false` leaves the first two out.
+export function absences(adapters, { vanish = [], resetAndGone = true } = {}) {
   const meta = {};
-  const cc = withFixture(adapters, 'claude-code', 'basic', {}, (fx) => {
-    const r = new Reader(adapters.adapterFor('claude-code'), storeOf(fx, HOST_A));
-    const p1 = r.pass();
-    const main = p1.find((e) => e.role === 'main');
-    meta.reset = { session_id: main.session.session_id, source_key: main.source_key };
-    fx.replaceFile(main.source_key, '');
-    return [p1, r.pass()];
-  });
-  const codex = withFixture(adapters, 'codex', 'features', {}, (fx) => {
-    const r = new Reader(adapters.adapterFor('codex'), storeOf(fx, HOST_A));
-    const p1 = r.pass();
-    const sessions = [...new Map(p1.map((e) => [e.session.session_id, e])).values()];
-    if (sessions.length < 2) throw new Error('codex/features: fewer than two sessions');
-    const [kept, removed] = sessions;
-    meta.kept = { session_id: kept.session.session_id };
-    meta.removed = { session_id: removed.session.session_id };
-    for (const e of p1) if (e.session.session_id === kept.session.session_id || e.session.session_id === removed.session.session_id) fx.deleteFile(e.source_key);
-    return [p1, r.pass({ gonePolicy: (sid) => (sid === kept.session.session_id ? 'kept' : 'removed') })];
-  });
-  const oc = withFixture(adapters, 'opencode', 'features', {}, (fx) => {
-    const db = path.relative(fx.dir, fx.harnessPath);
-    const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
-    const p1 = r.pass();
-    // The last message of the parent of the edge pair: a delta read reports it gone.
-    const { origin } = edgePair(fx, db);
-    const msg = fx.query(db, 'SELECT id FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1', [origin]);
-    meta.gone = { session_id: origin, message_id: msg[0].id };
-    fx.sql(db, [['DELETE FROM part WHERE message_id = ?', [msg[0].id]], ['DELETE FROM message WHERE id = ?', [msg[0].id]]]);
-    return [p1, r.pass()];
-  });
-  return { name: 'absences', passes: zipPasses(cc, codex, oc), meta };
+  const seqs = [];
+  if (resetAndGone) {
+    seqs.push(withFixture(adapters, 'claude-code', 'basic', {}, (fx) => {
+      const r = new Reader(adapters.adapterFor('claude-code'), storeOf(fx, HOST_A));
+      const p1 = r.pass();
+      const main = p1.find((e) => e.role === 'main');
+      meta.reset = { session_id: main.session.session_id, source_key: main.source_key };
+      fx.replaceFile(main.source_key, '');
+      return [p1, r.pass()];
+    }));
+  }
+  if (vanish.length) {
+    seqs.push(withFixture(adapters, 'codex', 'features', {}, (fx) => {
+      const r = new Reader(adapters.adapterFor('codex'), storeOf(fx, HOST_A));
+      const passes = [r.pass()];
+      const sessions = [...new Map(passes[0].map((e) => [e.session.session_id, e.session.session_id])).values()];
+      if (sessions.length < vanish.length) throw new Error(`codex/features: fewer than ${vanish.length} sessions`);
+      vanish.forEach((policy, i) => {
+        const sid = sessions[i];
+        if (!['kept', 'removed'].includes(policy)) throw new Error(`absences: no vanish policy ${policy}`);
+        meta[vanish.length > 1 ? `${policy}, pass ${i + 2}` : policy] = { session_id: sid };
+        for (const e of passes[0]) if (e.session.session_id === sid) fx.deleteFile(e.source_key);
+        passes.push(r.pass({ gonePolicy: policy }));
+      });
+      return passes;
+    }));
+  }
+  if (resetAndGone) {
+    seqs.push(withFixture(adapters, 'opencode', 'features', {}, (fx) => {
+      const db = path.relative(fx.dir, fx.harnessPath);
+      const r = new Reader(adapters.adapterFor('opencode'), storeOf(fx, HOST_A));
+      const p1 = r.pass();
+      // The last message of the parent of the edge pair: a delta read reports it gone.
+      const { origin } = edgePair(fx, db);
+      const msg = fx.query(db, 'SELECT id FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1', [origin]);
+      meta.gone = { session_id: origin, message_id: msg[0].id };
+      fx.sql(db, [['DELETE FROM part WHERE message_id = ?', [msg[0].id]], ['DELETE FROM message WHERE id = ?', [msg[0].id]]]);
+      return [p1, r.pass()];
+    }));
+  }
+  if (!seqs.length) throw new Error('absences: no case selected');
+  return { name: 'absences', passes: zipPasses(...seqs), meta };
 }
 
 // A crash, then other content: pass 2 is read and the engine crashes right after its archive

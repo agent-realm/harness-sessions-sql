@@ -377,6 +377,43 @@ test("an engine with a derived column (§3): from the session's current records 
   }
 });
 
+test("vanish policies: an engine that declares ['kept'] gets the removed parts reported n/a, not fail; one that declares nothing is checked against both", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const NEED_REMOVED = ['engine: vanished, removed', 'engine: policy changed'];
+  const declared = runKit(['--only', 'absences-replay'], withEngine('vanish-kept-only.mjs'), 10 * 60 * 1000);
+  const ran = rows(declared).filter((x) => x.status !== 'not run');
+  assert.ok(ran.some((x) => x.part === 'engine: vanished, kept'), declared.stdout + declared.stderr);
+  for (const x of ran) {
+    if (NEED_REMOVED.includes(x.part)) {
+      assert.equal(x.status, 'n/a', `${x.part} ${x.column}`);
+      assert.match(x.notes.join(' '), /declares vanishPolicies \["kept"\]: it does not implement "removed"/);
+    } else assert.equal(x.status, 'pass', `${x.part} ${x.column}: ${x.details.join(' ')}`);
+  }
+  assert.equal(declared.status, 0, declared.stdout + declared.stderr);
+  // The same engine without its declaration: checked against both, so its removed parts fail.
+  const undeclared = runKit(['--only', 'absences-replay'], withEngine('vanish-kept-undeclared.mjs'), 10 * 60 * 1000);
+  const ran2 = rows(undeclared).filter((x) => x.status !== 'not run');
+  assert.ok(ran2.length, undeclared.stdout + undeclared.stderr);
+  for (const x of ran2) {
+    if (NEED_REMOVED.includes(x.part)) {
+      assert.equal(x.status, 'fail', `${x.part} ${x.column}`);
+      assert.match(x.notes.join(' '), /declares no vanishPolicies: checked against both/);
+    } else assert.equal(x.status, 'pass', `${x.part} ${x.column}: ${x.details.join(' ')}`);
+  }
+  assert.equal(undeclared.status, 1);
+});
+
+test('self-test: a replay that applies the current vanish policy, not the one each manifest records, fails Absences replay', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--self-test', '--only', 'absences-replay', '--fault', 'engine:replay-current-policy'], process.env, 10 * 60 * 1000);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const res = rows(r);
+  assert.ok(res.length, r.stdout);
+  for (const x of res) {
+    assert.equal(x.status, 'fail', x.column);
+    // The live state is right; the replay of the earlier, kept event is not.
+    assert.match(x.details.join(' '), /kept, pass 2 then removed, pass 3: sessions: 1 only in live, 1 only in replayed/, x.column);
+  }
+});
+
 test("an engine with a table of the consumer's own whose ts is not Nullable: No time partition leaves it alone", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
   const r = runKit(['--only', 'no-time-partition'], withEngine('extra-table.mjs'), 10 * 60 * 1000);
   assert.equal(r.status, 0, r.stdout + r.stderr);

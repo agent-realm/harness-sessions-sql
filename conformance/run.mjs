@@ -123,7 +123,7 @@ class Context {
       }
     };
     return {
-      name: e.name, version: e.version, removal: e.removal ?? 'removed', crashPoints: e.crashPoints,
+      name: e.name, version: e.version, removal: e.removal ?? 'removed', crashPoints: e.crashPoints, vanishPolicies: e.vanishPolicies,
       pass: (envelopes, opts = {}) => call('pass', () => e.pass(envelopes, opts)),
       replay: (opts = {}) => call('replay', () => e.replay(opts)),
       cursor: typeof e.cursor === 'function' ? () => call('cursor', () => e.cursor()) : undefined,
@@ -131,10 +131,12 @@ class Context {
     };
   }
 
-  scenario(name) {
+  // A scenario, built once per run; `opts` selects a variant (the absences a check asks for).
+  scenario(name, opts) {
     if (!this.adapters) throw new SkipError(this.adaptersError);
-    if (!this.cache.scenarios.has(name)) this.cache.scenarios.set(name, SCENARIOS[name](this.adapters));
-    return this.cache.scenarios.get(name);
+    const key = opts === undefined ? name : `${name} ${JSON.stringify(opts)}`;
+    if (!this.cache.scenarios.has(key)) this.cache.scenarios.set(key, SCENARIOS[name](this.adapters, opts));
+    return this.cache.scenarios.get(key);
   }
 
   expect(sc) {
@@ -188,8 +190,9 @@ async function loadEngine() {
 
 // A check's parts: `database` (the profile's DDL, read through the catalogue and plain SQL) and
 // `engine` (the engine under test, driven through passes). A check written as one `run` is one
-// part, of its `kind`.
+// part, of its `kind`; one that lists `parts` ([{part, run}]) has those, each its own row.
 function partsOf(check) {
+  if (Array.isArray(check.parts)) return check.parts.map((p) => ({ part: p.part, fn: (ctx) => p.run(ctx) }));
   if (typeof check.run === 'function') return [{ part: check.kind ?? 'engine', fn: (ctx) => check.run(ctx) }];
   return ['database', 'engine'].filter((p) => typeof check[p] === 'function').map((p) => ({ part: p, fn: (ctx) => check[p](ctx) }));
 }
