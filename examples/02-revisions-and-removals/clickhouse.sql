@@ -63,18 +63,20 @@ SELECT session_id, title, rev, removed FROM sessions FINAL
 WHERE is_deleted = 0 AND removed = 1
 ORDER BY session_id;
 
--- 5. A second session row that turns out to be a true duplicate (say, a converted row that
---    matches a captured one). Physical deletion is only for true duplicates and for keys an
---    upgraded adapter no longer produces (spec section 2, principle 3). In ClickHouse it is a
---    version with is_deleted = 1 at a higher rev, which FINAL drops.
+-- 5. A second session, written by an older adapter version under a key that the upgraded
+--    adapter no longer produces (say, the new version folds it into another session). Such a key,
+--    and a true duplicate, are the only rows deleted physically (spec section 2, principle 3; a
+--    re-derive from the archive deletes exactly those keys, section 8). This example writes the
+--    row and deletes it by hand; it runs no adapter. In ClickHouse the deletion is a version
+--    with is_deleted = 1 at a higher rev, which FINAL drops.
 INSERT INTO sessions
     (host, harness, harness_path, session_id, incarnation,
      title, state, reuse, ts_source, content_sha, adapter, adapter_ver, model_version, rev, removed)
 VALUES
     ('dd20281dfd2171973d41a8686efeb11e', 'example-harness', '/home/user/.example-harness', 'example-session-2', '',
-     'Duplicate', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 1, 0);
+     'Old key', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 1, 0);
 
--- @ with the duplicate written, every row a reader can see (current and removed)
+-- @ with the old key written, every row a reader can see (current and removed)
 SELECT session_id, title, rev, removed FROM sessions FINAL
 WHERE is_deleted = 0
 ORDER BY session_id;
@@ -84,9 +86,9 @@ INSERT INTO sessions
      title, state, reuse, ts_source, content_sha, adapter, adapter_ver, model_version, rev, removed, is_deleted)
 VALUES
     ('dd20281dfd2171973d41a8686efeb11e', 'example-harness', '/home/user/.example-harness', 'example-session-2', '',
-     'Duplicate', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 2, 0, 1);
+     'Old key', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 2, 0, 1);
 
--- @ after the duplicate's physical deletion, every row a reader can see
+-- @ after the old key's physical deletion, every row a reader can see
 SELECT session_id, title, rev, removed FROM sessions FINAL
 WHERE is_deleted = 0
 ORDER BY session_id;

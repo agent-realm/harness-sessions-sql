@@ -113,16 +113,17 @@ SELECT session_id, title, rev, removed FROM sessions
 WHERE NOT is_deleted AND removed = 1
 ORDER BY session_id;
 
--- 5. A second session row that turns out to be a true duplicate (say, a converted row that
---    matches a captured one). Physical deletion is only for true duplicates and for keys an
---    upgraded adapter no longer produces (spec section 2, principle 3). In PostgreSQL it is a
---    DELETE.
+-- 5. A second session, written by an older adapter version under a key that the upgraded
+--    adapter no longer produces (say, the new version folds it into another session). Such a key,
+--    and a true duplicate, are the only rows deleted physically (spec section 2, principle 3; a
+--    re-derive from the archive deletes exactly those keys, section 8). This example writes the
+--    row and deletes it by hand; it runs no adapter. In PostgreSQL the deletion is a DELETE.
 INSERT INTO sessions
     (host, harness, harness_path, session_id, incarnation,
      title, state, reuse, ts_source, content_sha, adapter, adapter_ver, model_version, rev, removed)
 VALUES
     ('dd20281dfd2171973d41a8686efeb11e', 'example-harness', '/home/user/.example-harness', 'example-session-2', '',
-     'Duplicate', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 1, 0)
+     'Old key', 'active', 'impossible', 'event', repeat('3', 64), 'example-adapter', '0.1.0', 'sessions-model/1', 1, 0)
 ON CONFLICT (host, harness, harness_path, session_id, incarnation) DO UPDATE SET
     host_label = EXCLUDED.host_label, engine = EXCLUDED.engine, client = EXCLUDED.client,
     harness_version = EXCLUDED.harness_version, title = EXCLUDED.title,
@@ -136,7 +137,7 @@ ON CONFLICT (host, harness, harness_path, session_id, incarnation) DO UPDATE SET
     ingested_at = EXCLUDED.ingested_at, writer = EXCLUDED.writer
 WHERE EXCLUDED.rev > sessions.rev;
 
--- @ with the duplicate written, every row a reader can see (current and removed)
+-- @ with the old key written, every row a reader can see (current and removed)
 SELECT session_id, title, rev, removed FROM sessions
 WHERE NOT is_deleted
 ORDER BY session_id;
@@ -146,7 +147,7 @@ WHERE host = 'dd20281dfd2171973d41a8686efeb11e' AND harness = 'example-harness'
   AND harness_path = '/home/user/.example-harness' AND session_id = 'example-session-2'
   AND incarnation = '';
 
--- @ after the duplicate's physical deletion, every row a reader can see
+-- @ after the old key's physical deletion, every row a reader can see
 SELECT session_id, title, rev, removed FROM sessions
 WHERE NOT is_deleted
 ORDER BY session_id;
