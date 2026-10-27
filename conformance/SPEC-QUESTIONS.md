@@ -5,8 +5,9 @@ as it was written. For each: what the kit or the reference engine did, so nothin
 invented silently, and the question the specification should settle.
 
 **Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17 and 29; 6 and
-18 belong to the session-adapters package. 19 to 28 and 30 are open: v1 does not settle them, 27
-and 28 came from the kit's last review, and 29 and 30 from v1's derived columns (§3). Each answered item ends with its answer and the section that now
+18 belong to the session-adapters package. 19 to 28, 30 and 31 are open: v1 does not settle them, 27
+and 28 came from the kit's last review, 29 and 30 from v1's derived columns (§3), and 31 from
+the first production engine's inferred edges. Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so
 the answers can be read against them.
 
@@ -35,6 +36,7 @@ the answers can be read against them.
 | 28 | open (a kit convention) | none |
 | 29 | §3 Derived columns, §8 Redaction holds | Redaction holds judges a column the deployment adds against the records of the row's session; a second pass removes a message that holds a planted value; two faults and three test engines |
 | 30 | §2 principles 1 and 3, §3 Derived columns | none: the kit already judges history rows against the session's records, current or removed; forgotten content is not checked until an engine honours forget notices |
+| 31 | open (v1.x) | none |
 
 ## Checks that cannot run as §8 words them
 
@@ -388,3 +390,19 @@ the answers can be read against them.
     judged against the session's records, current or removed. One exception holds for history too:
     forgotten content is held by no row (§2 principle 1). The kit has no forget scenario, so that
     sentence is not checked until an engine honours forget notices (sessions v1.1).
+
+## Edges an engine infers
+
+31. **`stated_on` of an inferred edge (§4.5).** An engine edge's `stated_on` is `child`, `origin`
+    or `both`: which side's statement the edge rests on. An edge the engine infers (`evidence =
+    'inferred'`, for example a fork nominated from copied content) rests on no statement, so none
+    of the three is true. A production engine writes `''` for it today. `''` already reads as
+    "unknown" or "the own harness store" elsewhere in the mapping (§4.5's references,
+    `other_incarnation`), and here nothing is unknown: the edge has no statement, by construction.
+    *Proposed:* a fourth value, `none`, meaning the edge rests on no statement; it occurs exactly
+    when `evidence = 'inferred'`, and then the edge's supporting-statement keys are empty. Neither
+    profile constrains `stated_on` by a `CHECK`, so the change is text only (§4.5's list and the
+    schema comments), additive under v1.x. *Question:* `none`, or `''` documented as "no statement"?
+
+    *Open:* for the next v1.x.
+
