@@ -673,12 +673,22 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
         run.
 - [ ] **Two hosts, two sessions:** a data folder copied to a second host gives a second set of
       sessions, with the same `session_id`s and different session keys.
-- [ ] **Absences replay:** a still-listed source reset to empty, a vanished source handled as
-      `"policy": "kept"`, a vanished source handled as `"policy": "removed"`, and a delta read's
-      `gone` keys, each replayed from `session_units` alone (no entity table, no cursor), give the
-      same current state as the live pass, with the adapter-owned rows' removed versions. Replay
-      rebuilds the current edges, not the removed versions of edges that ended: it folds each
-      session alone, and the order of passes across sessions is not archived.
+- [ ] **Absences replay:** a still-listed source reset to empty, a delta read's `gone` keys, and a
+      vanished source handled under each vanish policy the engine implements (`"policy": "kept"`,
+      `"policy": "removed"`), each replayed from `session_units` alone (no entity table, no
+      cursor), give the same current state as the live pass, with the adapter-owned rows' removed
+      versions. Replay rebuilds the current edges, not the removed versions of edges that ended: it
+      folds each session alone, and the order of passes across sessions is not archived.
+      - **Vanish policies are declared, not assumed.** Which policy handles a vanished source is
+        the consumer's choice (§4.1), so an engine declares the policies it implements: `kept`,
+        `removed`, or both. Each declared policy is checked, and an undeclared one does not apply;
+        an engine that declares none is checked against both. A consumer that only ever keeps
+        conforms if it keeps correctly: both policies are needed only by an engine that offers
+        both.
+      - **Replay follows the recorded policy.** A `source_gone` manifest records the policy the
+        consumer applied (§4.1), and replay follows that record, never the engine's current
+        setting. For an engine that offers both, a policy that changes between passes leaves every
+        earlier event replaying as it was handled.
 - [ ] **No-op manifests:** a pass that omits the manifest of a read that changes nothing in the
       fold (§4.1) replays to the same current state as a pass that writes it.
 - [ ] **Re-derive from the archive:** a new `adapter_ver` replayed from `session_units` alone
