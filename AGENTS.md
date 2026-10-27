@@ -11,6 +11,8 @@ working on this repo.
   drafted in `schema/`.
 - **A conformance kit** (`conformance/`) that proves an implementation of the mapping, run against
   a ClickHouse or PostgreSQL target taken from the environment.
+- **Examples** (`examples/`): five runnable examples, from one session written by hand in SQL to
+  the reference engine checked by the kit, each README holding the output it prints.
 
 **Status: v1**; begun 2026-10-22.
 
@@ -73,12 +75,15 @@ session adapters ──produce──▶ sessions-model records ──mapped by�
     maintainer; history is never rewritten to clear it.
 - Tests that need a database take their target from the environment, so the same suite runs
   against any disposable ClickHouse or PostgreSQL deployment.
+- **The examples:** `npm test` in `examples/` runs every example against those targets and checks
+  its output against the expected output in its README (`examples/README.md`).
 - Use throwaway containers only with `docker rm -f -v`.
 
 ## Contract links
 
 The links to sessions-model and sessions share one base, `https://github.com/agent-realm/sessions-model/blob/main/contracts/`,
-defined once at the bottom of each file that uses them (README.md, 01-SESSIONS-SQL-SPEC.md). To
+defined once at the bottom of each file that uses them (README.md, 01-SESSIONS-SQL-SPEC.md,
+examples/03-records-to-rows/README.md). To
 move them to another repository name or pin a commit or tag, replace that base everywhere:
 
 ```sh
