@@ -7,14 +7,16 @@
 //
 //   node example.mjs                       every profile the example runs on that has a target
 //   node example.mjs --profile <profile>   that profile only: clickhouse or postgres
+//   node example.mjs --profiles            print the profiles the example runs on, and exit
 //
 // Without --profile, and with more than one profile to run, each profile's output follows a line
 // `== <profile> ==`.
 //
-// Exit 0: done. Exit 1: the example failed. Exit 2: a usage error (an unknown argument or profile,
-// a profile the example does not run on or that has no target, no target at all). Exit 3: skipped,
-// it cannot run here (it needs the session adapters, SSQL_ADAPTERS). An interrupted example exits
-// 130 (SIGINT) or 143 (SIGTERM), after it dropped its namespaces.
+// Exit 0: done. Exit 1: the example failed, or a namespace it opened could not be dropped. Exit 2:
+// a usage error (an unknown argument or profile, a profile the example does not run on or that has
+// no target, no target at all). Exit 3: skipped, it cannot run here (it needs the session adapters,
+// SSQL_ADAPTERS). An interrupted example exits 130 (SIGINT) or 143 (SIGTERM), after it dropped its
+// namespaces.
 
 import { targets as readTargets, openNamespace, loadSchema, openNamespaces, refuseNewNamespaces, PROFILES, norm } from '../../conformance/lib/db.mjs';
 import { Postgres } from '../../conformance/lib/pg.mjs';
@@ -57,6 +59,7 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
 }
 
 function parseArgs(argv) {
+  if (argv.length === 1 && argv[0] === '--profiles') return { list: true };
   let profile = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] !== '--profile') throw new Usage(`unknown argument ${argv[i]}`);
@@ -69,8 +72,13 @@ function parseArgs(argv) {
 // Run `run(ctx)` once per selected profile. `ctx`: { profile, target, namespace() }, where
 // namespace() opens a fresh namespace with schema/'s tables, dropped when this profile's run ends.
 export async function runExample({ profiles = PROFILES, run }) {
+  let notDropped = 0;
   try {
-    const { profile: only } = parseArgs(process.argv.slice(2));
+    const { profile: only, list } = parseArgs(process.argv.slice(2));
+    if (list) {
+      console.log(profiles.join(','));
+      return;
+    }
     const targets = readTargets();
     let selected;
     if (only !== null) {
@@ -98,7 +106,10 @@ export async function runExample({ profiles = PROFILES, run }) {
         await run(ctx);
       } finally {
         for (const ns of opened) {
-          await ns.drop().catch((e) => process.stderr.write(`warning: namespace ${ns.name} was not dropped: ${scrub(e?.message ?? e).slice(0, 200)}\n`));
+          await ns.drop().catch((e) => {
+            notDropped++;
+            process.stderr.write(`error: namespace ${ns.name} was not dropped: ${scrub(e?.message ?? e).slice(0, 200)}\n`);
+          });
         }
       }
     }
@@ -114,6 +125,8 @@ export async function runExample({ profiles = PROFILES, run }) {
       process.exitCode = 1;
     }
   }
+  // A namespace left behind fails the example, whatever else happened.
+  if (notDropped) process.exitCode = 1;
 }
 
 // A client of the namespace's tables under their unqualified names, as clickhouse-client or psql

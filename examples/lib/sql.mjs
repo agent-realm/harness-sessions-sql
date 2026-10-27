@@ -6,14 +6,21 @@
 // - a statement ends with `;` at the end of a line, and no string literal holds `;` or `--`;
 // - a comment line `-- @ <caption>` before a statement prints `<caption>:` and the rows the
 //   statement returns;
-// - a comment line `-- @error <caption>` before a statement expects the database to refuse it,
-//   and prints `<caption>: refused`. A statement it accepts fails the example.
+// - a comment line `-- @error <caption>` before a statement expects a constraint of the DDL to
+//   refuse it (ClickHouse: VIOLATED_CONSTRAINT, code 469; PostgreSQL: check_violation, SQLSTATE
+//   23514), and prints `<caption>: refused`. A statement the database accepts, or refuses for any
+//   other reason, fails the example.
 // Every other statement runs silently; every other comment is for the reader.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runExample, inNamespace, table } from './example.mjs';
+import { scrub } from '../../conformance/lib/secrets.mjs';
+
+// Whether an error is a constraint's refusal. The kit's clients keep ClickHouse's message (with its
+// `Code: …`) and PostgreSQL's SQLSTATE (as `status`).
+const constraintRefusal = (e) => String(e?.status ?? '') === '23514' || /\bCode: 469\b|VIOLATED_CONSTRAINT/.test(String(e?.message ?? ''));
 
 // The statements of a file: [{ sql, mark: null | { error, caption } }].
 export function statementsOf(text) {
@@ -54,8 +61,9 @@ export async function runSqlExample(exampleUrl, files) {
           if (!mark) {
             await db.exec(sql);
           } else if (mark.error) {
-            const accepted = await db.exec(sql).then(() => true, () => false);
-            if (accepted) throw new Error(`"${mark.caption}": the database accepted a statement it must refuse`);
+            const err = await db.exec(sql).then(() => null, (e) => e);
+            if (!err) throw new Error(`"${mark.caption}": the database accepted a statement its constraint must refuse`);
+            if (!constraintRefusal(err)) throw new Error(`"${mark.caption}": refused, but not by a constraint: ${scrub(String(err.message ?? err)).slice(0, 300)}`);
             console.log(`${mark.caption}: refused`);
           } else {
             console.log(`${mark.caption}:`);
