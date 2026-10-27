@@ -13,7 +13,7 @@ place of `[Unreleased]` below.
 **Status.** The specification is v1, accepted. It consumes sessions-model v1.3 (the records) and
 sessions v1.3 (the seam), or any later v1.x. The reference engine passes every §8 item on both
 database profiles (the two legacy items do not apply to PostgreSQL). memhouse, the first production
-implementation, passes every item that applies to it except Crash-safe, whose remaining failures
+implementation (its 0.20 line, in development), passes every item that applies to it except Crash-safe, whose remaining failures
 are the case
 [SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
 leaves open; two parts of Absences replay do not apply to it, as it declares only the vanish

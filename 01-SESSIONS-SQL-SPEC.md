@@ -731,9 +731,10 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
   on PostgreSQL, which do not apply there (§8);
 - every control in the self-test makes its check fail.
 
-**Production implementations.** memhouse's capture engine is the first. On its ClickHouse database
-profile it passes every §8 item that applies to it except Crash-safe, whose remaining failures are
-the case that [SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
+**Production implementations.** memhouse's capture engine is the first, in its 0.20 line, still in
+development. On its ClickHouse database profile it passes every §8 item that applies to it except
+Crash-safe, whose remaining failures are the case that
+[SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
 leaves open: a crash, then a re-run that reads other content. Two parts of Absences replay do not
 apply to it (n/a), because it declares only the vanish policies it uses (§8). No production
 implementation passes every item yet, so the pieces marked (plan) still wait for one. Per the
