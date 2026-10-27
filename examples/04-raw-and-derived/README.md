@@ -7,10 +7,11 @@ replayed tables match the live ones, removed versions included.
 
 ## What it shows
 
-- **The archive is the truth** ([§2], principle 1). Each pass archives the units its read delivered
-  and one **read manifest** per read (`unit_key = ''`, `enc = 'manifest'`): the read's
-  continuity, its pass counter `progress`, the units it delivered and the keys it reported gone
-  ([§4.1]).
+- **The archive is the truth** ([§2], principle 1). Each pass archives the units its read
+  delivered, and the reference engine writes a **read manifest** for each read (`unit_key = ''`,
+  `enc = 'manifest'`): the read's continuity, its pass counter `progress`, the units it delivered
+  and the keys it reported gone ([§4.1]). §4.1 lets an engine omit the manifest of a read that
+  changes nothing; every read here changes something.
 - **Generations.** A read that resets the source (a first read, or a rewrite) opens a new
   generation; an appended read adds to the current one. The third pass reads the file after a
   rewind rewrote it shorter, so the last two messages leave `live` and get removed versions
@@ -50,7 +51,9 @@ A unit's `unit_key` is the decimal byte offset where its line starts.
 - [§5 Writing][§5]: the pass the engine runs.
 - [§6 Reading][§6]: history through the archive.
 - [§7 Cursors and `rev`][§7]: `rev` is the writer's own policy.
-- [§8 Conformance][§8]: envelopes, and the Absences replay item this example walks through once.
+- [§8 Conformance][§8]: envelopes, and replay from `session_units` alone, which the Absences
+  replay item checks. The rewind here (a rewrite read as `reset`, with units left) is none of that
+  item's three cases (a source reset to empty, a delta read's gone keys, a vanished source).
 
 ## What it needs
 

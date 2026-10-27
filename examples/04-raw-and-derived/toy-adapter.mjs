@@ -1,7 +1,8 @@
 // A toy session adapter, written for this example only: not a session adapter of any harness (the
 // real ones are the session-adapters package's, example 05). Its harness store keeps a session as
-// one JSONL file, one line per message: {"id", "role", "text"}. It offers the two operations the
-// reference engine calls, after the `sessions` seam:
+// one JSONL file, one line per message: {"id", "role", "text"}. It offers three operations, after
+// the `sessions` seam: describe() (the adapter and its versions, which the reference engine reads),
+// and these two:
 // - read(source_key, text, from): one read of the file from the position `from`, with the
 //   continuity of sessions §3: `reset` for a first read or a file now shorter than `from` (a
 //   rewrite), `appended` for new whole lines, `unchanged` for none. A unit is one whole line, its

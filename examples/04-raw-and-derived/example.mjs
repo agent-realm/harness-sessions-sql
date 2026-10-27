@@ -1,6 +1,6 @@
 // Example 04: raw apart from derived. The reference engine (conformance/reference/engine.mjs) reads
-// a toy harness store through a toy adapter over three passes, archiving every raw unit and a read
-// manifest per read in session_units and deriving the entity tables from them. Then only
+// a toy harness store through a toy adapter over three passes, archiving every raw unit and its
+// read manifest for each read in session_units and deriving the entity tables from them. Then only
 // session_units is copied into a fresh namespace, the engine replays it there, and the replayed
 // tables match the live ones, removed versions included. See README.md.
 
@@ -46,7 +46,8 @@ await runExample({
       position = read.position;
     }
 
-    // 2. The archive: every unit, and one read manifest (unit_key '') per read, by generation.
+    // 2. The archive: every unit, and the read manifests (unit_key '') the engine wrote, by
+    //    generation.
     console.log('the archive, session_units (spec §4.1):');
     const archive = await live.present('session_units');
     for (const g of [...new Set(archive.map((r) => Number(r.generation)))].sort(byNumber)) {
