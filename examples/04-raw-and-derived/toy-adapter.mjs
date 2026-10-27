@@ -1,5 +1,5 @@
 // A toy session adapter, written for this example only: not a session adapter of any harness (the
-// real ones are the session-adapters package's, example 05). Its harness store keeps a session as
+// real ones are the harness-session-adapters package's, example 05). Its harness store keeps a session as
 // one JSONL file, one line per message: {"id", "role", "text"}. It offers three operations, after
 // the `sessions` seam: describe() (the adapter and its versions, which the reference engine reads),
 // and these two:

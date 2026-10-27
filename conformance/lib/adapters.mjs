@@ -1,5 +1,5 @@
-// The session adapters, from the session-adapters package (`@agent-realm/session-adapters`, in
-// harness-skeleton's packages/session-adapters). Until it is on npm, SSQL_ADAPTERS names it: a
+// The session adapters, from the harness-session-adapters package (`@agent-realm/harness-session-adapters`, in
+// harness-skeleton's packages/harness-session-adapters). Until it is on npm, SSQL_ADAPTERS names it: a
 // path to the package directory, or a package name the kit can import. The fixture-based checks
 // need the package's fixtures/ folder, which a checkout has and a published package may not.
 //
@@ -73,7 +73,7 @@ function bumpedAdapter(base, ver) {
 
 // Load the package. Returns { source } or { error } (the fixture checks are then skipped).
 export async function loadAdapters(spec = process.env.SSQL_ADAPTERS) {
-  if (!spec) return { error: 'SSQL_ADAPTERS is not set: name the session-adapters package (a path to it, or its package name)' };
+  if (!spec) return { error: 'SSQL_ADAPTERS is not set: name the harness-session-adapters package (a path to it, or its package name)' };
   try {
     let entry;
     let root;

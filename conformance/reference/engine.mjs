@@ -36,7 +36,7 @@ import { loadSchema } from '../lib/db.mjs';
 import { DDL_FAULTS } from './faults.mjs';
 import { SESSION_KEY, ENTITY_TABLES, sessionKeyOf, sessionKeyObject, rkOfRecord, rkOfRow, rksOf } from '../lib/keys.mjs';
 
-export const name = 'sessions-sql reference engine';
+export const name = 'harness-sessions-sql reference engine';
 export const version = '0.1.0';
 
 // Engine faults (see reference/faults.mjs for what each breaks).

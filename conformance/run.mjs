@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The sessions-sql conformance kit: the checks of 01-SESSIONS-SQL-SPEC.md §8, run against a
+// The harness-sessions-sql conformance kit: the checks of 01-SESSIONS-SQL-SPEC.md §8, run against a
 // ClickHouse or PostgreSQL target taken from the environment.
 //
 //   node run.mjs                 every check, on every profile with a target
@@ -19,7 +19,7 @@
 //
 // Environment: SSQL_CH_URL, SSQL_CH_USER, SSQL_CH_PASSWORD, SSQL_PG_URL, SSQL_PREFIX (default
 // conf_), SSQL_ENGINE (the engine module under test; default the reference engine), SSQL_ADAPTERS
-// (the session-adapters package: a path or a package name). See README.md.
+// (the harness-session-adapters package: a path or a package name). See README.md.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -328,7 +328,7 @@ async function main() {
       adaptersInfo = `${pkg.name} ${pkg.version}${adapters.fixtures ? ', with fixtures' : ', no fixtures/ folder'}`;
     } catch { /* keep "loaded" */ }
   }
-  console.log(`sessions-sql conformance kit ${KIT_VERSION} (commit ${kitCommit()})`);
+  console.log(`harness-sessions-sql conformance kit ${KIT_VERSION} (commit ${kitCommit()})`);
   console.log(`engine: ${engineInfo}`);
   console.log(`session adapters: ${adaptersInfo}`);
   for (const p of PROFILES) {

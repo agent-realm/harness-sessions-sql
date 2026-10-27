@@ -73,7 +73,7 @@ export class FixtureStore {
   // case that keeps an earlier state beside it). `upto`: build each database from its first
   // `upto` statements only.
   constructor(adapters, harness, caseName, { tree = 'store', upto } = {}) {
-    if (!adapters.fixtures) throw new Error('the session-adapters package has no fixtures/ folder');
+    if (!adapters.fixtures) throw new Error('the harness-session-adapters package has no fixtures/ folder');
     this.caseDir = path.join(adapters.fixtures, harness, caseName);
     if (!fs.existsSync(this.caseDir)) throw new Error(`no fixture case ${harness}/${caseName}`);
     this.harness = harness;

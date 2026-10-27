@@ -8,7 +8,7 @@ which checks the reference engine against the same target.
 ## What it shows
 
 - **The seam end to end.** The harness stores are copies of three fixture cases of the
-  session-adapters package (`claude-code/basic`, `codex/basic`, `opencode/features`), all
+  harness-session-adapters package (`claude-code/basic`, `codex/basic`, `opencode/features`), all
   synthetic. A consumer reads each store through its harness's adapter (`list`, then `read` of
   every source from where it was left) and hands each read to the engine as an **envelope**
   ([§8], Envelopes). The consumer is the kit's own `Reader`
@@ -42,14 +42,14 @@ which checks the reference engine against the same target.
 - [§5 Writing][§5]: the pass.
 - [§6 Reading][§6]: current state.
 - [§8 Conformance][§8]: envelopes, and every item the kit checks.
-- [§9 Status][§9]: the fixtures, read from a checkout of the session-adapters package.
+- [§9 Status][§9]: the fixtures, read from a checkout of the harness-session-adapters package.
 
 ## What it needs
 
 - A ClickHouse target (`SSQL_CH_URL`, with `SSQL_CH_USER` and `SSQL_CH_PASSWORD`), a PostgreSQL
   target (`SSQL_PG_URL`), or both, from the environment as the conformance kit takes them. Point
   them only at a disposable deployment: the kit creates and drops namespaces of its own there.
-- **The session adapters**, `@agent-realm/session-adapters` 1.0.0 (`packages/session-adapters` of
+- **The session adapters**, `@agent-realm/harness-session-adapters` 1.0.0 (`packages/harness-session-adapters` of
   [harness-skeleton][harness-skeleton]), named by `SSQL_ADAPTERS` as the kit names them. Two ways
   to get them:
   - **From source**, which this example needs: it reads the package's `fixtures/` folder, which a
@@ -59,11 +59,11 @@ which checks the reference engine against the same target.
     ```sh
     git clone https://github.com/agent-realm/harness-skeleton
     git -C harness-skeleton checkout 5ab0659
-    export SSQL_ADAPTERS=$PWD/harness-skeleton/packages/session-adapters
+    export SSQL_ADAPTERS=$PWD/harness-skeleton/packages/harness-session-adapters
     ```
 
-  - **From npm, once published:** `npm install @agent-realm/session-adapters@1.0.0` in
-    `conformance/`, and `SSQL_ADAPTERS=@agent-realm/session-adapters` (a package name resolves
+  - **From npm, once published:** `npm install @agent-realm/harness-session-adapters@1.0.0` in
+    `conformance/`, and `SSQL_ADAPTERS=@agent-realm/harness-session-adapters` (a package name resolves
     from the kit's folder). That loads the adapters, which is enough for the kit's checks that
     need no fixtures, but not for this example.
 
@@ -93,10 +93,10 @@ To check an engine of your own instead of the reference engine, run the kit with
 
 ## Expected output
 
-The counts are those of session-adapters 1.0.0's fixtures; another version of the package can
+The counts are those of harness-session-adapters 1.0.0's fixtures; another version of the package can
 change them.
 
-<!-- session-adapters: 1.0.0 -->
+<!-- harness-session-adapters: 1.0.0 -->
 
 <!-- expected: clickhouse -->
 ```text

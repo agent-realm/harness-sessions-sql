@@ -39,7 +39,7 @@ builds one.
 
 The variables are listed in [What it needs][needs]: `SSQL_CH_URL` (with `SSQL_CH_USER` and
 `SSQL_CH_PASSWORD`) and/or `SSQL_PG_URL` for the targets, `SSQL_ENGINE` for your module,
-`SSQL_ADAPTERS` for the session-adapters package, and `SSQL_PREFIX` and `SSQL_TIMEOUT_MS` to adjust
+`SSQL_ADAPTERS` for the harness-session-adapters package, and `SSQL_PREFIX` and `SSQL_TIMEOUT_MS` to adjust
 the run. Point the targets only at a disposable deployment.
 
 ```sh
@@ -52,7 +52,7 @@ your module's path in its place.
 
 A value starting with `.` or `/` is a path, taken from the directory you run in; anything else is a
 package name. The fixture-based checks need
-`SSQL_ADAPTERS` to name a checkout of the session-adapters package, as for
+`SSQL_ADAPTERS` to name a checkout of the harness-session-adapters package, as for
 [example 05](../../examples/05-full-blown/); without it they are skipped, with the reason.
 
 ## 3. Read the verdict

@@ -1,6 +1,6 @@
 // The two hashes of a sessions-model record (sessions-model §2), as an adapter seals the records it
 // derives. The examples write their records by hand (03) or derive them with a toy adapter (04),
-// so they seal them here, the way the session-adapters package's own seal does (its
+// so they seal them here, the way the harness-session-adapters package's own seal does (its
 // src/records.js, which the package does not export):
 // - members the model gives every record of a type, filled in where a record leaves them out, as
 //   the package's seal fills them: `exit_code: null` on a tool_result part, `setup: null` on a

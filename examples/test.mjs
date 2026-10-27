@@ -16,9 +16,10 @@
 // that does not parse so, in any case, or that names an unknown profile, fails the example on the
 // profile it concerns (every profile, when that cannot be told).
 //
-// An example that reads the session-adapters package (`--about` says so) prints counts of that
-// package's version, so its README names the version in a line `<!-- session-adapters: <version>
-// -->`, and must: a README without one, or with a line holding `<!-- session-adapters` (or the
+// An example that reads the harness-session-adapters package (`--about` says so) prints counts of that
+// package's version, so its README names the version in a line `<!-- harness-session-adapters: <version>
+// -->`, and must: a README without one, or with a line holding `<!-- harness-session-adapters` (the old
+// name `<!-- session-adapters` included, or the
 // singular, in any case) that does not parse so, fails the example. With another version in
 // SSQL_ADAPTERS, its runs fail with that reason, unrun.
 //
@@ -30,7 +31,7 @@
 // first.
 //
 // And it checks the examples' seal (lib/records.mjs) on records that leave out members a seal fills
-// in: against known answers computed with session-adapters 1.0.0's seal, and, with SSQL_ADAPTERS,
+// in: against known answers computed with harness-session-adapters 1.0.0's seal, and, with SSQL_ADAPTERS,
 // against the package's own src/records.js. With SSQL_ADAPTERS set but its package's seal not
 // loadable, the seal check fails, --allow-skip or not: --allow-skip accepts an example that cannot
 // run here for want of something (example 05 without SSQL_ADAPTERS), while a SSQL_ADAPTERS that is
@@ -73,7 +74,7 @@ function parseArgs(argv) {
 // ---- the READMEs --------------------------------------------------------------------------------
 
 const EXPECTED = /^<!-- expected: ([a-z]+(?:, [a-z]+)*) -->$/;
-const ADAPTERS_VERSION = /^<!-- session-adapters: (\d+\.\d+\.\d+) -->$/;
+const ADAPTERS_VERSION = /^<!-- harness-session-adapters: (\d+\.\d+\.\d+) -->$/;
 // The profile names on a marker line that does not parse, read loosely, to tell which row it
 // concerns.
 const looseProfiles = (line) => ((line.match(/<!--\s*expected\s*:?\s*([^>]*?)\s*-->/i) ?? [])[1] ?? '')
@@ -90,10 +91,10 @@ function readmeOf(name) {
   let adapters = null;
   lines.forEach((line, i) => {
     const at = `${name}/README.md:${i + 1}`;
-    if (/<!--\s*session-adapters?/i.test(line)) {
+    if (/<!--\s*(harness-)?session-adapters?/i.test(line)) {
       const m = line.match(ADAPTERS_VERSION);
-      if (!m) problems.push({ why: `${at}: a session-adapters marker that does not parse (it must read \`<!-- session-adapters: <version> -->\`)`, profiles: null });
-      else if (adapters) problems.push({ why: `${at}: a second session-adapters marker`, profiles: null });
+      if (!m) problems.push({ why: `${at}: a harness-session-adapters marker that does not parse (it must read \`<!-- harness-session-adapters: <version> -->\`)`, profiles: null });
+      else if (adapters) problems.push({ why: `${at}: a second harness-session-adapters marker`, profiles: null });
       else adapters = m[1];
     }
     if (!/<!--\s*expected/i.test(line)) return;
@@ -141,10 +142,10 @@ function examples() {
           problems.push({ why: `${name}: the README gives output for ${p}, and the example does not run on it`, profiles: [p] });
         }
         for (const pr of problems) if (pr.profiles === 'missing') pr.profiles = missing.length ? missing : null;
-        if (about.sessionAdapters && !readme.adapters && !problems.some((pr) => /session-adapters marker/.test(pr.why))) {
-          problems.push({ why: `${name}: the example reads the session-adapters package, and its README names no version (\`<!-- session-adapters: <version> -->\`)`, profiles: null });
+        if (about.sessionAdapters && !readme.adapters && !problems.some((pr) => /harness-session-adapters marker/.test(pr.why))) {
+          problems.push({ why: `${name}: the example reads the harness-session-adapters package, and its README names no version (\`<!-- harness-session-adapters: <version> -->\`)`, profiles: null });
         }
-        if (!about.sessionAdapters && readme.adapters) problems.push({ why: `${name}: the README names a session-adapters version, and the example does not read the package`, profiles: null });
+        if (!about.sessionAdapters && readme.adapters) problems.push({ why: `${name}: the README names a harness-session-adapters version, and the example does not read the package`, profiles: null });
         // A problem of the whole README concerns every profile the example runs on.
         for (const pr of problems) if (pr.profiles === null) pr.profiles = about.profiles;
       }
@@ -156,7 +157,7 @@ function examples() {
 // ---- the seal -----------------------------------------------------------------------------------
 
 // Records that leave out the members a seal fills in (sessions-model §2.1, §2.3, §2.4), and their
-// hashes as session-adapters 1.0.0's seal (src/records.js) computes them.
+// hashes as harness-session-adapters 1.0.0's seal (src/records.js) computes them.
 const K = { host: 'dd20281dfd2171973d41a8686efeb11e', harness: 'example-harness', harness_path: '/home/user/.example-harness', session_id: 'seal-check', incarnation: '' };
 const SEAL_CASES = [
   {
@@ -199,10 +200,10 @@ async function sealCheck() {
       for (const k of ['content_sha', 'cmp_sha']) if ((mine[k] ?? null) !== (t[k] ?? null)) problems.push(`${c.label}: ${k} ${mine[k]}, the package's seal ${t[k]}`);
     }
   }
-  return { ok: !problems.length, why: problems.length ? problems.join('\n') : `${SEAL_CASES.length} records sealed as session-adapters 1.0.0 seals them${notes.length ? `, ${notes.join(', ')}` : ''}` };
+  return { ok: !problems.length, why: problems.length ? problems.join('\n') : `${SEAL_CASES.length} records sealed as harness-session-adapters 1.0.0 seals them${notes.length ? `, ${notes.join(', ')}` : ''}` };
 }
 
-// The version of the session-adapters package SSQL_ADAPTERS names, or null when it is not set or
+// The version of the harness-session-adapters package SSQL_ADAPTERS names, or null when it is not set or
 // does not load (the example then says why it skips).
 async function adaptersVersion() {
   if (!process.env.SSQL_ADAPTERS) return null;
@@ -321,7 +322,7 @@ async function main() {
       else if (!(profile in ex.expected)) r = { status: '-' };
       else if (!selected.includes(profile)) r = { status: 'not run', why: targets[profile] ? 'not selected (--profile)' : `no target (${ENV[profile]})` };
       else if (ex.adapters && version !== null && version !== ex.adapters) {
-        r = { status: 'fail', why: `not run: the README's output is session-adapters ${ex.adapters}'s, and SSQL_ADAPTERS names ${version}` };
+        r = { status: 'fail', why: `not run: the README's output is harness-session-adapters ${ex.adapters}'s, and SSQL_ADAPTERS names ${version}` };
       } else {
         const before = await namespaces(profile, targets[profile]);
         const out = await run(ex.name, profile);

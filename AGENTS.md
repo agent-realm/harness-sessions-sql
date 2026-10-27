@@ -1,11 +1,11 @@
-# Working on sessions-sql
+# Working on harness-sessions-sql
 
 Conventions for any coding agent (Claude Code, Codex, OpenCode, pi, Gemini, …) and any human
 working on this repo.
 
 ## What this repo is
 
-- **sessions-sql**: the reference for keeping agent-harness sessions in a database. It maps the
+- **harness-sessions-sql**: the reference for keeping agent-harness sessions in a database. It maps the
   records of sessions-model v1 to tables, keys, revisions and deletions.
 - **Database profiles**: ClickHouse (normative) and Postgres, over the same logical tables. Both are
   drafted in `schema/`.
@@ -19,10 +19,10 @@ working on this repo.
 ## The dependency rule
 
 ```
-session adapters ──produce──▶ sessions-model records ──mapped by──▶ sessions-sql ◀──implement── stores (memhouse, …)
+session adapters ──produce──▶ sessions-model records ──mapped by──▶ harness-sessions-sql ◀──implement── stores (memhouse, …)
 ```
 
-- sessions-sql depends on sessions-model and the `sessions` seam, cited by version. It never
+- harness-sessions-sql depends on sessions-model and the `sessions` seam, cited by version. It never
   copies their text.
 - It never depends on one implementation's internals. memhouse is the first implementation, not
   the definition.
@@ -81,7 +81,7 @@ session adapters ──produce──▶ sessions-model records ──mapped by�
 
 ## Installing and deploying
 
-sessions-sql is a standard, not a service: deploying it means making its tables in a database and
+harness-sessions-sql is a standard, not a service: deploying it means making its tables in a database and
 checking the engine that writes them. The steps, with
 [the tutorial](docs/tutorials/from-empty-database-to-conforming-store.md) and
 [`conformance/README.md`](conformance/README.md) as the reference:
@@ -95,7 +95,7 @@ checking the engine that writes them. The steps, with
    `docker compose` call. Wait until both answer before anything runs against them; the tutorial's
    first step gives a bounded check for each.
 3. **The variables.** `SSQL_CH_URL`, `SSQL_CH_USER` and `SSQL_CH_PASSWORD`, and/or `SSQL_PG_URL`,
-   for the targets; `SSQL_ADAPTERS` for the session-adapters package (a checkout, for its
+   for the targets; `SSQL_ADAPTERS` for the harness-session-adapters package (a checkout, for its
    fixtures); `SSQL_ENGINE`, `SSQL_PREFIX` and `SSQL_TIMEOUT_MS` to adjust a kit run
    (`conformance/README.md`, What it needs).
 4. **Dependencies.** `npm ci` in `conformance/`. `examples/` has none of its own: it uses the kit's.
