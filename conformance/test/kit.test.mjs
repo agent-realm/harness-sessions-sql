@@ -14,7 +14,7 @@ import { ddlStatements, describeTarget, norm } from '../lib/db.mjs';
 import { rkOfLive, rkOfRow, recordKey } from '../lib/keys.mjs';
 import { DDL_FAULTS, DDL_FAULT_PROFILES } from '../reference/faults.mjs';
 import { keyElements } from '../checks/01-tables-and-keys.mjs';
-import { encodeAdapterVer } from '../reference/rows.mjs';
+import { rowsOf, edgesOf } from '../reference/rows.mjs';
 import { bumpVersion } from '../lib/adapters.mjs';
 import { scrub, registerUrl, registerSecret } from '../lib/secrets.mjs';
 import { openNamespace, loadSchema, targets as readTargets } from '../lib/db.mjs';
@@ -90,10 +90,26 @@ test('targets are printed without credentials; values compare alike across profi
   assert.equal(norm(true), 'true');
 });
 
-test('adapter_ver: a.b.c encoded as an integer, and the kit bumps the patch', () => {
-  assert.equal(encodeAdapterVer('0.2.0'), 2000);
+test('adapter_ver: stored as the adapter states it, with no encoding; the kit bumps the patch', () => {
+  const meta = { adapter: 'kit-adapter', adapter_ver: '0.2.0', model_version: 'sessions-model/1' };
+  const [{ row }] = rowsOf({ type: 'usage', host: 'h', harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: 's', usage_id: 'u', anchor: {}, granularity: 'per_message', content_sha: 'x' }, meta);
+  assert.equal(row.adapter_ver, '0.2.0');
   assert.equal(bumpVersion('0.2.0'), '0.2.1');
-  assert.ok(encodeAdapterVer(bumpVersion('1.9.9')) > encodeAdapterVer('1.9.9'));
+  assert.equal(bumpVersion('1.9.999'), '1.9.1000');
+});
+
+test('child_stored: null stays null on a statement, and on an edge whose statements do not say', () => {
+  const meta = { adapter: 'kit-adapter', adapter_ver: '0.2.0', model_version: 'sessions-model/1' };
+  const S = { host: 'h', harness: 'kit-harness', harness_path: '/home/user/.kit', incarnation: '' };
+  const stmt = (session_id, stated_on, child_stored) => rowsOf({
+    ...S, session_id, type: 'link', kind: 'subagent', stated_on, at: 'call-1', child_stored, content_sha: 'x',
+    child: { harness: 'kit-harness', session_id: 'child' }, origin: { harness: 'kit-harness', session_id: 'origin' },
+  }, meta)[0].row;
+  const held = [{ ...S, session_id: 'child' }, { ...S, session_id: 'origin' }];
+  assert.equal(stmt('origin', 'origin', null).child_stored, null);
+  assert.equal(edgesOf([stmt('child', 'child', null), stmt('origin', 'origin', null)], held)[0].child_stored, null);
+  assert.equal(edgesOf([stmt('child', 'child', true), stmt('origin', 'origin', null)], held)[0].child_stored, true);
+  assert.equal(edgesOf([stmt('child', 'child', true), stmt('origin', 'origin', false)], held)[0].child_stored, false);
 });
 
 test('secrets: a URL user and password, registered, leave no trace in a message', () => {

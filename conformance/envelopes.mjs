@@ -553,9 +553,9 @@ export function nullTs(adapters) {
 const SHA = (c) => c.repeat(64);
 export function syntheticRows({ host = HOST_A, harness = 'kit-harness', ts_source = 'event', enc = 'utf8', adapter = 'kit-adapter' } = {}) {
   const S = { host, harness, harness_path: '/home/user/.kit', session_id: 'kit-session-1', incarnation: '' };
-  const common = { adapter, adapter_ver: 1, model_version: 'sessions-model/1', rev: 1 };
+  const common = { adapter, adapter_ver: '0.0.1', model_version: 'sessions-model/1', rev: 1 };
   return {
-    session_units: { ...S, source_key: 'kit.jsonl', generation: 1, unit_key: '0', chunk: 0, sha256: SHA('a'), enc, redacted: false, continuity: 'reset', raw: '{"kit":1}', adapter, adapter_ver: 1 },
+    session_units: { ...S, source_key: 'kit.jsonl', generation: 1, unit_key: '0', chunk: 0, sha256: SHA('a'), enc, redacted: false, continuity: 'reset', raw: '{"kit":1}', adapter, adapter_ver: '0.0.1' },
     sessions: { ...S, state: 'active', reuse: 'impossible', ts_source, aliases: [], fingerprint: [], content_sha: SHA('b'), ...common },
     session_parts: { ...S, message_id: 'm-1', part_id: '0', part_index: 0, order_key: '1', role: 'assistant', status: 'complete', state: 'current', message_aliases: [], cmp_sha: SHA('c'), message_content_sha: SHA('d'), kind: 'text', text: 'synthetic', content_sha: SHA('e'), ...common },
     session_usage: { ...S, usage_id: 'message:m-1#1', anchor_kind: 'message', anchor_id: 'm-1', granularity: 'per_message', content_sha: SHA('f'), ...common },

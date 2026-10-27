@@ -1,19 +1,24 @@
-// §8: "Null is unknown: usage counters, exit_code and output_ref_bytes that the adapter emitted as
-// null stay null in every database profile, and a part's own source or state survives beside its
-// message's."
+// §8: "Null is unknown: usage counters, exit_code, output_ref_bytes and a statement's child_stored
+// that the adapter emitted as null, and the orig_sha256 of a unit without one, stay null in every
+// database profile, and a part's own source or state survives beside its message's."
 //
-// Database part: a synthetic usage row with every counter and flag null, and a tool_result part
-// row with exit_code, output_ref_bytes and output_len null and its own part_source and
-// part_state, inserted with plain SQL and read back. (ClickHouse would turn a null into a non-
-// Nullable column's default on insert, silently.)
+// Database part: a synthetic usage row with every counter and flag null, a tool_result part row
+// with exit_code, output_ref_bytes and output_len null and its own part_source and part_state, a
+// link statement with child_stored null and a unit with orig_sha256 null, inserted with plain SQL
+// and read back. (ClickHouse would turn a null into a non-Nullable column's default on insert,
+// silently.)
 // Engine part: the broad scenario, and refLost (a tool result whose output reference a newer
 // version drops). Every usage counter and flag, every tool_result's exit_code and output
-// reference (output_ref_bytes null, output_ref and its sha '', where the part has none), and every
-// part's own source and state, compared with the record the adapter derived. No fixture emits a
-// null input or output; the database part covers those.
+// reference (output_ref_bytes null, output_ref and its sha '', where the part has none), every
+// part's own source and state, and every statement's child_stored, compared with the record the
+// adapter derived; every unit row's orig_sha256 compared with the unit the read emitted (null
+// where it has none), and every manifest's null. No fixture emits a null input or output; the
+// database part covers those.
 
 import { insertRows } from '../lib/db.mjs';
 import { syntheticRows } from '../envelopes.mjs';
+import { emittedUnits } from '../lib/oracle.mjs';
+import { sessionKeyOf, rkOfRecord, rkOfRow } from '../lib/keys.mjs';
 import { verdict } from '../lib/result.mjs';
 
 const COUNTERS = ['input', 'output', 'cache_read', 'cache_write', 'reasoning', 'tool_prompt', 'cost'];
@@ -23,7 +28,7 @@ const val = (v) => (v === null || v === undefined ? null : typeof v === 'boolean
 export default {
   id: 'null-is-unknown',
   title: 'Null is unknown',
-  faults: ['ddl:counters-not-null', 'engine:zero-nulls', 'engine:pg-partial-upsert'],
+  faults: ['ddl:counters-not-null', 'engine:zero-nulls', 'engine:pg-partial-upsert', 'ddl:unknowns-not-null', 'engine:child-stored-default', 'engine:orig-sha-zero'],
 
   async database(ctx) {
     const problems = [];
@@ -42,12 +47,22 @@ export default {
     } catch (e) {
       problems.push(`database: a null was refused: ${e.message.slice(0, 200)}`);
     }
-    return verdict(problems, ['every counter, flag, exit_code, output_ref_bytes and output_len written null']);
+    try {
+      await insertRows(ns, 'session_links', [{ ...rows.session_links, child_stored: null }]);
+      await insertRows(ns, 'session_units', [{ ...rows.session_units, orig_sha256: null }]);
+      const [l] = await ns.present('session_links');
+      if (l.child_stored !== null) problems.push(`database: session_links.child_stored written null, read back ${JSON.stringify(l.child_stored)}`);
+      const [u] = await ns.present('session_units');
+      if (u.orig_sha256 !== null) problems.push(`database: session_units.orig_sha256 written null, read back ${JSON.stringify(u.orig_sha256).slice(0, 80)}`);
+    } catch (e) {
+      problems.push(`database: a null child_stored or orig_sha256 was refused: ${e.message.slice(0, 200)}`);
+    }
+    return verdict(problems, ['every counter, flag, exit_code, output_ref_bytes, output_len, child_stored and orig_sha256 written null']);
   },
 
   async engine(ctx) {
     const problems = [];
-    const seen = { nullCounters: 0, values: 0, exitNull: 0, refBytes: 0, refLost: 0, ownSource: 0, ownState: 0 };
+    const seen = { nullCounters: 0, values: 0, exitNull: 0, refBytes: 0, refLost: 0, ownSource: 0, ownState: 0, childNull: 0, childSet: 0, origNull: 0, origSet: 0 };
     for (const name of ['broad', 'refLost']) {
       const sc = ctx.scenario(name);
       const exps = ctx.expect(sc);
@@ -57,6 +72,7 @@ export default {
       for (const p of sc.passes) await engine.pass(p);
       const usageRows = new Map((await ens.current('session_usage')).map((r) => [`${r.host}|${r.harness_path}|${r.session_id}|${r.usage_id}`, r]));
       const partRows = new Map((await ens.current('session_parts')).map((r) => [`${r.host}|${r.harness_path}|${r.session_id}|${r.message_id}|${r.part_id}`, r]));
+      const linkRows = new Map((await ens.current('session_links')).filter((r) => r.owner === 'adapter').map((r) => [`${sessionKeyOf(r)}|${rkOfRow('session_links', r)}`, r]));
       const at = (r, p) => `${name}: part ${r.message_id}/${p.part_id}`;
       for (const st of exp.values()) {
         for (const r of st.current.values()) {
@@ -68,6 +84,13 @@ export default {
               else seen.values++;
               if (val(row[c]) !== val(r[c])) problems.push(`${name}: usage ${r.usage_id}.${c}: the adapter emitted ${r[c]}, stored ${row[c]}`);
             }
+          }
+          if (r.type === 'link') {
+            const row = linkRows.get(`${sessionKeyOf(r)}|${rkOfRecord(r)}`);
+            if (!row) { problems.push(`${name}: statement ${r.kind} of ${r.session_id}: no current row`); continue; }
+            if (r.child_stored === null || r.child_stored === undefined) seen.childNull++;
+            else seen.childSet++;
+            if (val(row.child_stored) !== val(r.child_stored ?? null)) problems.push(`${name}: statement ${r.kind} of ${r.session_id} (stated_on ${r.stated_on}): child_stored ${r.child_stored ?? null} emitted, ${row.child_stored} stored`);
           }
           if (r.type === 'message') {
             for (const p of r.parts ?? []) {
@@ -94,6 +117,14 @@ export default {
           }
         }
       }
+      // §4.1: a unit's own orig_sha256, or null; null for every manifest.
+      const { units } = emittedUnits(sc.passes);
+      for (const row of await ens.present('session_units')) {
+        const want = row.unit_key === '' ? null : units.get(`${sessionKeyOf(row)}\u0000${row.source_key}\u0000${row.unit_key}\u0000${row.sha256}`)?.orig_sha256 ?? null;
+        if (want === null) seen.origNull++;
+        else seen.origSet++;
+        if ((row.orig_sha256 ?? null) !== want) problems.push(`${name}: unit ${row.source_key}@${row.unit_key || '(manifest)'}: orig_sha256 ${want ?? 'null'} emitted, ${JSON.stringify(row.orig_sha256).slice(0, 80)} stored`);
+      }
       if (name === 'refLost') {
         const refs = (snap) => new Set([...snap.values()].flatMap((st) => [...st.current.values()].flatMap((r) => (r.parts ?? []).filter((p) => p.kind === 'tool_result' && p.output_ref).map((p) => `${r.session_id}|${r.message_id}|${p.part_id}`))));
         const now = refs(exp);
@@ -101,6 +132,7 @@ export default {
         if (!seen.refLost) problems.push('refLost: no tool_result lost its output_ref: the scenario proves nothing');
       }
     }
-    return verdict(problems, [`${seen.nullCounters} null and ${seen.values} non-null counters, ${seen.exitNull} null exit_code, ${seen.refBytes} output_ref, ${seen.refLost} output_ref lost by a newer version, ${seen.ownSource} own source, ${seen.ownState} own state`]);
+    if (!seen.childNull) problems.push('no statement in the scenarios has a null child_stored: the engine part proves nothing for it');
+    return verdict(problems, [`${seen.nullCounters} null and ${seen.values} non-null counters, ${seen.exitNull} null exit_code, ${seen.refBytes} output_ref, ${seen.refLost} output_ref lost by a newer version, ${seen.ownSource} own source, ${seen.ownState} own state, ${seen.childNull} null and ${seen.childSet} set child_stored, ${seen.origNull} null and ${seen.origSet} set orig_sha256`]);
   },
 };

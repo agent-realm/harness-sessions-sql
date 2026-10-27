@@ -25,7 +25,7 @@
 // Fault flags (`faults`) break one behaviour each. The kit's self-test runs every check against
 // its fault, which must make it fail: the checks' positive controls. They exist for that only.
 
-import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, rowKey, encodeAdapterVer } from './rows.mjs';
+import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, rowKey, statedAdapterVer } from './rows.mjs';
 import { jcs, jcsSha, sha256 } from '../lib/jcs.mjs';
 import { unitFromArchive } from '../lib/adapters.mjs';
 import { loadSchema } from '../lib/db.mjs';
@@ -42,7 +42,7 @@ export const ENGINE_FAULTS = new Set([
   'zero-nulls', 'unredact', 'pg-skew', 'sql-tsv-no-trim', 'policy-kept-as-removed', 'private-manifest',
   'ignore-crash', 'no-rerun-bump', 'part-sha-no-nulls', 'chunk-drop', 'pg-partial-upsert',
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
-  'manifest-whole-generation',
+  'manifest-whole-generation', 'encode-adapter-ver', 'child-stored-default', 'orig-sha-zero',
 ]);
 
 export function createEngine(opts) {
@@ -273,7 +273,10 @@ class ReferenceEngine {
   // `manifest` is null).
   rowsOfRead(S, e, meta, generation, units, manifest) {
     const F = this.faults;
-    const base = { ...S, source_key: e.source_key, chunk: 0, adapter: meta.adapter, adapter_ver: encodeAdapterVer(meta.adapter_ver) };
+    // orig_sha256 is null for a unit without an original sha, and for a manifest (spec §4.1).
+    // Fault `orig-sha-zero`: '' instead (64 zero bytes in ClickHouse, spaces in PostgreSQL).
+    const noOrig = F.has('orig-sha-zero') ? '' : null;
+    const base = { ...S, source_key: e.source_key, chunk: 0, adapter: meta.adapter, adapter_ver: statedAdapterVer(meta.adapter_ver), orig_sha256: noOrig };
     const rows = units.flatMap((u) => {
       let raw = this.unredact(u.body);
       let enc = u.enc;
@@ -288,7 +291,7 @@ class ReferenceEngine {
       if (F.has('chunk-drop') && pieces.length > 1) pieces = pieces.slice(0, -1);
       return pieces.map((piece, chunk) => ({
         ...base, generation, unit_key: u.unit_key, chunk, sha256: u.sha256, enc,
-        ...(u.orig_sha256 ? { orig_sha256: u.orig_sha256 } : {}),
+        orig_sha256: u.orig_sha256 ?? noOrig,
         redacted: !!u.redacted, continuity: manifest?.continuity ?? e.read.continuity, raw: piece,
       }));
     });
@@ -341,6 +344,7 @@ class ReferenceEngine {
         if (table === 'session_usage') for (const c of ['input', 'output', 'cache_read', 'cache_write', 'reasoning', 'tool_prompt', 'cost']) row[c] ??= 0;
         if (table === 'session_parts' && row.kind === 'tool_result') row.exit_code ??= 0;
       }
+      if (F.has('child-stored-default') && table === 'session_links') row.child_stored ??= true;
       // Faults `part-sha-no-nulls` (both profiles) and `pg-skew` (PostgreSQL only): a part's
       // content_sha over the part without its null members, not the part as emitted (§4).
       if ((F.has('part-sha-no-nulls') || (F.has('pg-skew') && this.profile === 'postgres')) && table === 'session_parts' && row.part_id !== '') {
@@ -377,7 +381,7 @@ class ReferenceEngine {
         const want = isRemoved ? 1 : 0;
         if (!ex || num(ex.removed) !== want || ex.content_sha !== row.content_sha
           || (row.message_content_sha !== undefined && ex.message_content_sha !== row.message_content_sha)
-          || num(ex.adapter_ver) !== row.adapter_ver) {
+          || String(ex.adapter_ver) !== row.adapter_ver) {
           writes.push({ table, row: { ...row, removed: want, rev } });
         }
       }
@@ -662,7 +666,7 @@ class ReferenceEngine {
         rows.push({
           ...w.S, source_key: sourceKey, mode: st.mode ?? '', position: st.position ?? '', generation: st.generation, progress: st.progress,
           state: jcs({ units: st.units, gone: st.gone, policy: st.policy ?? null }), state_ver: Number(d.state_ver ?? 0),
-          adapter: d.adapter, adapter_ver: encodeAdapterVer(d.adapter_ver),
+          adapter: d.adapter, adapter_ver: statedAdapterVer(d.adapter_ver),
         });
       }
     }
@@ -694,6 +698,8 @@ class ReferenceEngine {
 
   async write(table, rows) {
     if (!rows.length) return;
+    // Fault `encode-adapter-ver`: the version string stored as an integer encoding of a.b.c.
+    if (this.faults.has('encode-adapter-ver')) rows = rows.map((r) => (r.adapter_ver === undefined ? r : { ...r, adapter_ver: encodedVer(r.adapter_ver) }));
     if (this.profile === 'clickhouse') {
       await this.ns.client.insert(this.ns.t(table), rows.map((r) => encodeClickHouse(table, r)));
       return;
@@ -747,6 +753,13 @@ class ReferenceEngine {
     }
     return this.columnCache.get(table);
   }
+}
+
+// Fault `encode-adapter-ver` only: a.b.c as a·10^6 + b·10^3 + c, the kind of encoding the spec
+// rules out (§4: the version string, as stated).
+function encodedVer(v) {
+  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return m ? String(Number(m[1]) * 1e6 + Number(m[2]) * 1e3 + Number(m[3])) : String(v);
 }
 
 // A position as the cursor keeps it: canonical JSON, and '' for none (a null `from`, a null
@@ -837,7 +850,6 @@ function encodeClickHouse(table, row) {
   // `args` is a String with '' for none; `setup` a Nullable(String).
   if (table === 'session_parts' && r.args === null) r.args = '';
   if (r.is_deleted !== undefined) r.is_deleted = num(r.is_deleted === true ? 1 : r.is_deleted === false ? 0 : r.is_deleted);
-  if (r.orig_sha256 === null) delete r.orig_sha256;
   return r;
 }
 
@@ -854,6 +866,5 @@ function encodePostgres(table, row) {
   if (r.is_deleted !== undefined) r.is_deleted = r.is_deleted === true || r.is_deleted === 1 || r.is_deleted === '1';
   if (r.removed !== undefined) r.removed = num(r.removed);
   if (r.redacted !== undefined) r.redacted = r.redacted === true || r.redacted === 1;
-  if (r.orig_sha256 === '' || r.orig_sha256 === undefined) delete r.orig_sha256;
   return r;
 }

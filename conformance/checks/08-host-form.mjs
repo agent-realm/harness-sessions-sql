@@ -57,7 +57,7 @@ export default {
     let i = 0;
     for (const table of tables) {
       const base = (host, extra = {}) => {
-        if (table === 'session_sources') return { host, harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: `kit-s${++i}`, incarnation: '', source_key: 'kit.jsonl', mode: 'stream', generation: 1, progress: 1, state_ver: 1, adapter: 'kit-adapter', adapter_ver: 1, ...extra };
+        if (table === 'session_sources') return { host, harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: `kit-s${++i}`, incarnation: '', source_key: 'kit.jsonl', mode: 'stream', generation: 1, progress: 1, state_ver: 1, adapter: 'kit-adapter', adapter_ver: '0.0.1', ...extra };
         return { ...syntheticRows({ host })[table], session_id: `kit-s${++i}`, ...extra };
       };
       await attempt(table, base(HOST_A), true, 'a host/v0 value');

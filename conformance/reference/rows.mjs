@@ -28,15 +28,16 @@ export const CH_STRING_JSON = { sessions: ['setup'], session_parts: ['args'] };
 
 export const rowKey = (table, row) => IDENTITY[table].map((c) => String(row[c] ?? '')).join('\u0000');
 
-// sessions-model's adapter_ver is a version string (`0.2.0`); both DDL files keep an integer
-// (`UInt32`, `integer`). The reference engine stores a.b.c as a·10^6 + b·10^3 + c. That encoding
-// is the reference's own, not the spec's (see SPEC-QUESTIONS.md).
-export function encodeAdapterVer(v) {
-  if (typeof v === 'number') return v;
-  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)$/);
-  if (!m || Number(m[2]) > 999 || Number(m[3]) > 999) throw new Error(`adapter_ver ${v}: not a.b.c with b, c < 1000`);
-  return Number(m[1]) * 1e6 + Number(m[2]) * 1e3 + Number(m[3]);
+// adapter_ver is the version string the adapter's output states (sessions §5, `0.2.0`). Both
+// database profiles keep it in a string column, as given (spec §4): no encoding, no order.
+export function statedAdapterVer(v) {
+  if (v === null || v === undefined || v === '') throw new Error('adapter_ver: the adapter states none');
+  return String(v);
 }
+
+// A boolean as either profile reads it back (ClickHouse and PostgreSQL booleans, or 1/0, or
+// their text), null kept.
+export const bool = (v) => (v === true || v === 1 || v === 'true' ? true : v === false || v === 0 || v === 'false' ? false : v ?? null);
 
 const s = (v) => (v === null || v === undefined ? '' : String(v));
 const n = (v) => (v === undefined ? null : v);
@@ -44,7 +45,7 @@ const sessionCols = (r) => ({ host: r.host, harness: r.harness, harness_path: r.
 
 // The rows of one record: [{ table, row }]. `meta`: { adapter, adapter_ver, model_version }.
 export function rowsOf(r, meta) {
-  const common = { adapter: meta.adapter, adapter_ver: encodeAdapterVer(meta.adapter_ver), model_version: meta.model_version, is_deleted: 0, removed: 0 };
+  const common = { adapter: meta.adapter, adapter_ver: statedAdapterVer(meta.adapter_ver), model_version: meta.model_version, is_deleted: 0, removed: 0 };
   switch (r.type) {
     case 'session':
       return [{
@@ -115,9 +116,8 @@ export function rowsOf(r, meta) {
           stated_on: r.stated_on,
           ...ref('child', r.child), ...ref('origin', r.origin),
           through_message_id: s(inh.through_message_id), ids_preserved: n(inh.ids_preserved), marked: n(inh.marked), usage_copied: n(inh.usage_copied),
-          // child_stored is a non-nullable Bool (default true) in both DDL files, while an
-          // origin-side statement may carry null: the reference writes the default (SPEC-QUESTIONS.md).
-          child_stored: r.child_stored === false ? false : true,
+          // null is unknown (an origin-side statement that does not say), kept null (spec §4.5).
+          child_stored: n(r.child_stored),
           evidence: r.evidence ?? 'explicit', verified: null, statements: [],
           content_sha: r.content_sha,
           ...common,
@@ -246,12 +246,13 @@ function edgeRow(g, statedOn, at, sts) {
     origin_host: same ? '' : origin.host, origin_harness_path: same ? '' : origin.harness_path, origin_harness: origin.harness,
     origin_session_id: origin.session_id, origin_incarnation: origin.incarnation,
     through_message_id: first('through_message_id') ?? '', ids_preserved: first('ids_preserved'), marked: first('marked'), usage_copied: first('usage_copied'),
-    child_stored: !sts.some((x) => x.child_stored === false || x.child_stored === 0 || x.child_stored === 'false'),
+    // false when a supporting statement says the child was never stored, true when one says it
+    // was, and null (unknown) when none says.
+    child_stored: sts.some((x) => bool(x.child_stored) === false) ? false : sts.some((x) => bool(x.child_stored) === true) ? true : null,
     evidence: 'explicit', verified: null, statements: supporting,
   };
-  const norm = (v) => (v === 1 || v === 'true' ? true : v === 0 || v === 'false' ? false : v);
-  for (const f of ['ids_preserved', 'marked', 'usage_copied']) edge[f] = norm(edge[f]);
-  return { ...edge, content_sha: jcsSha(edge), adapter: lead.adapter, adapter_ver: Number(lead.adapter_ver), model_version: lead.model_version, is_deleted: 0, removed: 0 };
+  for (const f of ['ids_preserved', 'marked', 'usage_copied']) edge[f] = bool(edge[f]);
+  return { ...edge, content_sha: jcsSha(edge), adapter: lead.adapter, adapter_ver: statedAdapterVer(lead.adapter_ver), model_version: lead.model_version, is_deleted: 0, removed: 0 };
 }
 
 export { linkTableKey };

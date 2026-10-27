@@ -65,6 +65,20 @@ export const DDL_FAULTS = {
       : once(t, /exit_code(\s+)integer,/, 'exit_code$1integer NOT NULL DEFAULT 0,', 'counters-not-null');
   },
 
+  // adapter_ver back to an integer column, as before the v1 proposal: a version string as the
+  // adapter states it (0.2.0) no longer fits.
+  'adapter-ver-integer': (t, p) => (p === 'clickhouse'
+    ? once(t, /\n(\s*)adapter_ver(\s+)LowCardinality\(String\),/g, '\n$1adapter_ver$2UInt32,', 'adapter-ver-integer')
+    : once(t, /\n(\s*)adapter_ver(\s+)text(\s+)NOT NULL,/g, '\n$1adapter_ver$2integer NOT NULL,', 'adapter-ver-integer')),
+
+  // child_stored and orig_sha256 that cannot hold null: ClickHouse turns a null into the default
+  // (true, 64 zero bytes) on insert, PostgreSQL refuses it.
+  'unknowns-not-null': (t, p) => (p === 'clickhouse'
+    ? once(once(t, /child_stored(\s+)Nullable\(Bool\),/, 'child_stored$1Bool DEFAULT true,', 'unknowns-not-null'),
+      /orig_sha256(\s+)Nullable\(FixedString\(64\)\),/, "orig_sha256$1FixedString(64) DEFAULT '',", 'unknowns-not-null')
+    : once(once(t, /child_stored(\s+)boolean,/, 'child_stored$1boolean NOT NULL DEFAULT true,', 'unknowns-not-null'),
+      /orig_sha256(\s+)char\(64\),/, "orig_sha256$1char(64) NOT NULL DEFAULT '',", 'unknowns-not-null')),
+
   // Two columns of sessions swapped (title and cwd), and two of session_parts (text and call_id):
   // a different DDL order gives a different legacy line (ClickHouse).
   'reorder-columns': (t) => {
@@ -96,6 +110,8 @@ export const FAULT_NOTES = {
   'ddl:reorder-columns': 'two column pairs swapped in sessions and session_parts',
   'ddl:host-check-unanchored': 'the host form checks without ^ and $',
   'ddl:sort-prefix-ingested-at': "session_parts' sort key prefixed with toDate(ingested_at), which changes between versions",
+  'ddl:adapter-ver-integer': 'adapter_ver an integer column',
+  'ddl:unknowns-not-null': 'child_stored and orig_sha256 not Nullable, with defaults',
   'engine:regenerate': 'a re-delivered read opens a new generation',
   'engine:cursor-early': 'the cursor advances right after the archive write',
   'engine:skip-removed': 'no removed versions',
@@ -126,4 +142,7 @@ export const FAULT_NOTES = {
   'engine:host-merge-messages': "a second host's messages, usage, links and lifecycle written under the first host",
   'engine:fill-ts-lifecycle': "a lifecycle record's null ts filled with the first-seen time",
   'engine:manifest-whole-generation': "a read's manifest lists the whole generation after the read, not the units the read delivered (the fold is unchanged)",
+  'engine:encode-adapter-ver': 'adapter_ver stored as an integer encoding of a.b.c',
+  'engine:child-stored-default': "a statement's null child_stored written as true",
+  'engine:orig-sha-zero': "a unit's missing orig_sha256 written as '' instead of null",
 };
