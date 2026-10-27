@@ -14,6 +14,11 @@ export const DDL_FAULTS = {
     ? once(t, /unit_key, chunk, sha256\);/, 'unit_key, sha256);', 'drop-key-column')
     : once(t, /unit_key, chunk, sha256\)\n/, 'unit_key, sha256)\n', 'drop-key-column')),
 
+  // session_parts' sort key prefixed with the day of ingestion (ClickHouse): a column that
+  // changes between versions of a key, so they never collapse. §3 allows only columns that never
+  // change for a key, such as toDate(ts).
+  'sort-prefix-ingested-at': (t) => once(t, /(ENGINE = ReplacingMergeTree\(rev, is_deleted\)\n)ORDER BY \((host, harness, harness_path, session_id, incarnation, message_id, part_id)\);/, '$1ORDER BY (toDate(ingested_at), $2);', 'sort-prefix-ingested-at'),
+
   // Registries as closed lists: harness, ts_source and enc constrained to the values seen so far.
   'registry-enum': (t, p) => {
     const lists = {
@@ -72,6 +77,7 @@ export const DDL_FAULTS = {
 export const DDL_FAULT_PROFILES = {
   'partition-by-time': ['clickhouse'],
   'reorder-columns': ['clickhouse'],
+  'sort-prefix-ingested-at': ['clickhouse'],
 };
 
 // The profiles an engine fault breaks anything in, where not both.
@@ -89,6 +95,7 @@ export const FAULT_NOTES = {
   'ddl:counters-not-null': 'usage counters and exit_code not Nullable, default 0',
   'ddl:reorder-columns': 'two column pairs swapped in sessions and session_parts',
   'ddl:host-check-unanchored': 'the host form checks without ^ and $',
+  'ddl:sort-prefix-ingested-at': "session_parts' sort key prefixed with toDate(ingested_at), which changes between versions",
   'engine:regenerate': 'a re-delivered read opens a new generation',
   'engine:cursor-early': 'the cursor advances right after the archive write',
   'engine:skip-removed': 'no removed versions',
@@ -118,4 +125,5 @@ export const FAULT_NOTES = {
   'engine:unredact-b64': 'a redacted unit stored with its planted value put back, as base64',
   'engine:host-merge-messages': "a second host's messages, usage, links and lifecycle written under the first host",
   'engine:fill-ts-lifecycle': "a lifecycle record's null ts filled with the first-seen time",
+  'engine:manifest-whole-generation': "a read's manifest lists the whole generation after the read, not the units the read delivered (the fold is unchanged)",
 };

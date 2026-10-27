@@ -5,7 +5,11 @@
 // tombstoning consumer's tombstone."
 //
 // Database part: the DDL (the engine's own, through createTables, or schema/ as a self-check),
-// as loaded under the deployment prefix, read back from the catalogue.
+// as loaded under the deployment prefix, read back from the catalogue. §3 (ClickHouse) lets a
+// consumer "prefix the sort key with columns that never change for a key, such as toDate(ts) for
+// messages" (sessions-model §1 rule 7: ts never changes). The kit accepts exactly that: before the
+// identity columns, `ts` or one function of `ts` alone; any other extra key element fails
+// (SPEC-QUESTIONS.md). A PostgreSQL primary key is the identity, exactly.
 // Engine part: after the rewind scenario, every record that was ever current is still present
 // (current, or a removed version); for a tombstoning engine, a record that left live may be gone.
 
@@ -16,11 +20,12 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'tables-and-keys',
   title: 'Tables and keys',
-  faults: ['ddl:drop-key-column', 'engine:delete-removed'],
+  faults: ['ddl:drop-key-column', 'ddl:sort-prefix-ingested-at', 'engine:delete-removed'],
 
   async database(ctx) {
     const problems = [];
     const notes = [];
+    const prefixed = [];
     const ns = await ctx.namespace();
     const { tables } = identities();
     const keys = await keySets(ns);
@@ -33,11 +38,17 @@ export default {
         continue;
       }
       const want = new Set(identity);
-      const missing = identity.filter((c) => !got.has(c));
-      const extra = [...got].filter((c) => !want.has(c));
-      if (missing.length || extra.length) problems.push(`${physical}: key ${[...got].join(', ')}; ${missing.length ? `missing ${missing.join(', ')}` : ''}${extra.length ? ` extra ${extra.join(', ')}` : ''}`);
+      // §3's prefix: leading ts elements, ClickHouse only.
+      let lead = 0;
+      if (ns.profile === 'clickhouse') while (lead < got.length && !want.has(got[lead]) && TS_PREFIX.test(got[lead])) lead++;
+      if (lead) prefixed.push(`${physical} (${got.slice(0, lead).join(', ')})`);
+      const rest = got.slice(lead);
+      const missing = identity.filter((c) => !rest.includes(c));
+      const extra = rest.filter((c) => !want.has(c));
+      if (missing.length || extra.length) problems.push(`${physical}: key ${got.join(', ')}; ${missing.length ? `missing ${missing.join(', ')}` : ''}${extra.length ? ` extra ${extra.join(', ')}` : ''}`);
     }
     notes.push(`${Object.keys(tables).length} tables of §3 checked under the prefix ${ns.prefix || '(none)'}`);
+    if (prefixed.length) notes.push(`a sort-key prefix §3 allows: ${prefixed.join('; ')}`);
     return verdict(problems, notes);
   },
 
@@ -68,12 +79,38 @@ export default {
   },
 };
 
-// The key columns of every table of the namespace, from the catalogue.
+// §3's allowed prefix: `ts`, or one function of `ts` alone (toDate(ts), toStartOfHour(ts), …).
+const TS_PREFIX = /^(?:ts|[A-Za-z_][A-Za-z0-9_]*\(\s*ts\s*\))$/;
+
+// A ClickHouse key expression split at its top-level commas (a function's arguments stay whole).
+export function keyElements(expr) {
+  const out = [];
+  let depth = 0;
+  let quote = null;
+  let cur = '';
+  for (const ch of expr) {
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === "'" || ch === '`' || ch === '"') quote = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) {
+      out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+// The key of every table of the namespace, from the catalogue: its elements in order.
 async function keySets(ns) {
   const out = new Map();
   if (ns.profile === 'clickhouse') {
     const rows = await ns.query('SELECT name, sorting_key FROM system.tables WHERE database = {db:String}', { settings: { param_db: ns.name } });
-    for (const r of rows) out.set(r.name, new Set(r.sorting_key.split(',').map((c) => c.trim()).filter(Boolean)));
+    for (const r of rows) out.set(r.name, keyElements(r.sorting_key));
     return out;
   }
   const rows = await ns.query(`
@@ -84,10 +121,10 @@ async function keySets(ns) {
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
     WHERE i.indisprimary AND n.nspname = $1`, [ns.name]);
   for (const r of rows) {
-    if (!out.has(r.name)) out.set(r.name, new Set());
-    out.get(r.name).add(r.col);
+    if (!out.has(r.name)) out.set(r.name, []);
+    out.get(r.name).push(r.col);
   }
   const tables = await ns.query('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = $1', [ns.name]);
-  for (const t of tables) if (!out.has(t.name)) out.set(t.name, new Set());
+  for (const t of tables) if (!out.has(t.name)) out.set(t.name, []);
   return out;
 }

@@ -42,6 +42,7 @@ export const ENGINE_FAULTS = new Set([
   'zero-nulls', 'unredact', 'pg-skew', 'sql-tsv-no-trim', 'policy-kept-as-removed', 'private-manifest',
   'ignore-crash', 'no-rerun-bump', 'part-sha-no-nulls', 'chunk-drop', 'pg-partial-upsert',
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
+  'manifest-whole-generation',
 ]);
 
 export function createEngine(opts) {
@@ -259,6 +260,11 @@ class ReferenceEngine {
       }
       state = { generation, units: list, gone: false, position: positionOf(r.position), mode: e.mode ?? '', progress };
       manifest = { progress, continuity: r.continuity, units: r.units.map((u) => [u.unit_key, u.sha256]), gone: r.gone ?? [], source_gone: false };
+      // Fault `manifest-whole-generation`: a read that opens no generation and delivers units or
+      // gone keys lists the whole generation as the read leaves it, not what the read delivered.
+      // Folded in order, the manifests give the same units, so only matching each manifest with
+      // its read tells.
+      if (F.has('manifest-whole-generation') && !opens && (r.units.length || (r.gone ?? []).length)) manifest.units = list;
     }
     return { state, manifest, units, opens };
   }

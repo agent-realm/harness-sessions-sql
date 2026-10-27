@@ -31,7 +31,7 @@ const show = (k) => k.replace(/\u0000/g, '/').slice(0, 160);
 export default {
   id: 'units-only',
   title: 'Units only',
-  faults: ['engine:archive-held-back', 'engine:private-manifest', 'engine:part-sha-no-nulls', 'engine:chunk-drop'],
+  faults: ['engine:archive-held-back', 'engine:private-manifest', 'engine:part-sha-no-nulls', 'engine:chunk-drop', 'engine:manifest-whole-generation'],
 
   async engine(ctx) {
     const problems = [];

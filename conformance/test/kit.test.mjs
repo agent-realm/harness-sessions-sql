@@ -12,7 +12,8 @@ import { identities, knownAnswerVectors, fullRowVectors, ddlColumns, LEGACY_LINE
 import { jcs, sha256, hostOf } from '../lib/jcs.mjs';
 import { ddlStatements, describeTarget, norm } from '../lib/db.mjs';
 import { rkOfLive, rkOfRow, recordKey } from '../lib/keys.mjs';
-import { DDL_FAULTS } from '../reference/faults.mjs';
+import { DDL_FAULTS, DDL_FAULT_PROFILES } from '../reference/faults.mjs';
+import { keyElements } from '../checks/01-tables-and-keys.mjs';
 import { encodeAdapterVer } from '../reference/rows.mjs';
 import { bumpVersion } from '../lib/adapters.mjs';
 import { scrub, registerUrl, registerSecret } from '../lib/secrets.mjs';
@@ -55,14 +56,18 @@ test('DDL: every table gets the deployment prefix in its namespace, for both pro
 });
 
 test('DDL faults: each finds its pattern in the profiles it applies to', () => {
-  const only = { 'partition-by-time': ['clickhouse'], 'reorder-columns': ['clickhouse'] };
   for (const [name, fault] of Object.entries(DDL_FAULTS)) {
-    for (const profile of only[name] ?? ['clickhouse', 'postgres']) {
+    for (const profile of DDL_FAULT_PROFILES[name] ?? ['clickhouse', 'postgres']) {
       const before = ddlStatements(profile, { qualify: (t) => t }).join(';');
       const after = ddlStatements(profile, { qualify: (t) => t, transforms: [fault] }).join(';');
       assert.notEqual(after, before, `${name} on ${profile}`);
     }
   }
+});
+
+test('a ClickHouse key splits at its top-level commas only', () => {
+  assert.deepEqual(keyElements("toDate(ts), host, toStartOfInterval(ts, INTERVAL 1 day), 'a,b', part_id"),
+    ['toDate(ts)', 'host', 'toStartOfInterval(ts, INTERVAL 1 day)', "'a,b'", 'part_id']);
 });
 
 test('JCS and host/v0: canonical order, and the sessions-model known answer for a Linux machine id', () => {
@@ -78,8 +83,9 @@ test('keys: a link live key maps to the same rk as its statement row', () => {
 });
 
 test('targets are printed without credentials; values compare alike across profiles', () => {
-  const t = describeTarget('postgres', { url: 'postgres://someone:hunter2@localhost:5432/db' });
-  assert.ok(!t.includes('hunter2') && !t.includes('someone'));
+  const t = describeTarget('postgres', { url: 'postgres://fake-user:fake-pass@db.example:5432/db' });
+  assert.ok(!t.includes('fake-pass') && !t.includes('fake-user'), t);
+  assert.equal(t, 'postgres: postgres://db.example:5432/db');
   assert.equal(norm('2026-01-02 09:00:06.840'), norm('2026-01-02 09:00:06.84+00'));
   assert.equal(norm(true), 'true');
 });
@@ -97,6 +103,38 @@ test('secrets: a URL user and password, registered, leave no trace in a message'
   const out = scrub(msg);
   for (const v of ['unit-user-7', 'unit-p@ss-7', 'unit-p%40ss-7', 'unit-key-7', 'fake-a:fake-b']) assert.ok(!out.includes(v), `${v} in ${out}`);
   assert.ok(scrub('unit-user-70 and my-unit-user-7').includes('unit-user-70'), 'a user name is replaced only as a word');
+});
+
+// A password holding `@` (raw or as %40) or `/`, or given as a ?password= parameter. Its parts are
+// what a cut at the wrong `@` would leave behind.
+const AT_PASSWORD = 'p@ssW0rdX';
+const AT_PARTS = ['ssW0rdX', 'p@ss', 'p%40ss', 'pa/ss'];
+
+test('secrets: a URL whose password holds @ or /, registered or not, leaves no part of it in a message', () => {
+  // Not registered: the URL net alone cuts the user info at the last `@` of the URL.
+  for (const msg of [
+    `connect to postgres://fake-u1:${AT_PASSWORD}@db.invalid:1/kit failed`,
+    'connect to postgres://fake-u1:p%40ssW0rdX@db.invalid:1/kit failed',
+    'connect to postgres://fake-u1:pa/ssW0rdX@db.invalid:1/kit failed',
+    `connect to postgres://db.invalid:1/kit?user=fake-u1&password=${AT_PASSWORD} failed`,
+    `connect to http://fake-u1:${AT_PASSWORD}@ch.invalid:8123/?database=x failed`,
+  ]) {
+    const out = scrub(msg);
+    for (const v of [...AT_PARTS, 'fake-u1']) assert.ok(!out.includes(v), `${v} in ${out}`);
+    assert.match(out, /\b(db|ch)\.invalid\b/, `the host is kept: ${out}`);
+  }
+  // Registered (as a target's URL registers it): wherever the value stands, and inside a URL.
+  const pw = 'q@ssW0rdY';
+  registerUrl(`postgres://fake-u8:${encodeURIComponent(pw)}@db.invalid:1/kit`);
+  registerSecret('fake-pa/ss-7');
+  for (const msg of [
+    `connect to postgres://fake-u8:${pw}@db.invalid:1/kit failed`,
+    `the password ${pw} (${encodeURIComponent(pw)}) was refused`,
+    'connect to postgres://fake-u7:fake-pa/ss-7@db.invalid:1/kit failed (fake-pa%2Fss-7)',
+  ]) {
+    const out = scrub(msg);
+    for (const v of ['ssW0rdY', 'q@ss', 'q%40ss', 'fake-u8', 'fake-u7', 'pa/ss', 'pa%2Fss']) assert.ok(!out.includes(v), `${v} in ${out}`);
+  }
 });
 
 const KIT = path.join(HERE, '..', 'run.mjs');
@@ -130,6 +168,29 @@ test('a failing connection prints no user or password of either profile, in stdo
   assert.ok(/unreachable/.test(r.stdout + r.report), `the failing connection path did not run:\n${r.stdout}${r.stderr}`);
   assertNoFake(r);
   assert.notEqual(r.status, 0);
+});
+
+const assertNoParts = (r, parts) => {
+  for (const [where, text] of [['stdout', r.stdout], ['stderr', r.stderr], ['--json', r.report]]) {
+    for (const v of parts) assert.ok(!text.includes(v), `${v} printed in ${where}:\n${text}`);
+  }
+};
+
+test('a target password holding @: no part of it is printed, in stdout, stderr or --json', () => {
+  const r = runKit(['--only', 'tables-and-keys,host-form'], kitEnv({
+    SSQL_CH_URL: `http://fake-u1:${AT_PASSWORD}@ch.invalid:1`,
+    SSQL_PG_URL: `postgres://fake-u2:${AT_PASSWORD}@pg.invalid:1/kit`,
+  }));
+  assert.ok(/unreachable/.test(r.stdout + r.report), `the failing connection path did not run:\n${r.stdout}${r.stderr}`);
+  assertNoParts(r, [...AT_PARTS, 'fake-u1', 'fake-u2']);
+  assert.notEqual(r.status, 0);
+});
+
+test('an engine that fails to load, quoting a URL with a password holding @: no part of it is printed', () => {
+  const r = runKit([], kitEnv({ SSQL_CH_URL: 'http://127.0.0.1:1', SSQL_ENGINE: path.join(ENGINES, 'leaky-load.mjs') }));
+  assert.match(r.stderr, /kit error: could not reach the archive at postgres:\/\/archive\.invalid:5432\/sessions/, r.stderr);
+  assertNoParts(r, [...AT_PARTS, 'fake-archive']);
+  assert.equal(r.status, 2);
 });
 
 test('usage errors exit 2: an unknown check id, flag, profile or fault, a profile with no target, no target at all', () => {
@@ -189,6 +250,10 @@ test('a server that refuses fake credentials: its message prints no user or pass
   if (process.env.SSQL_PG_URL) over.SSQL_PG_URL = withUserInfo(process.env.SSQL_PG_URL, 'fakepguser', 'fake-pgpass');
   const r = runKit(['--only', 'tables-and-keys,host-form'], kitEnv(over));
   assert.ok(/authentication|password|AUTHENTICATION/i.test(r.stdout + r.report), `no authentication failure was reported:\n${r.stdout}${r.stderr}`);
+  // The target line calls a refusal a refusal, not unreachable.
+  for (const p of ['clickhouse', 'postgres'].filter((x) => over[x === 'clickhouse' ? 'SSQL_CH_URL' : 'SSQL_PG_URL'])) {
+    assert.match(r.stdout, new RegExp(`^target ${p}: \\S+ \\(refused \\(`, 'm'), r.stdout);
+  }
   assertNoFake(r);
   assert.notEqual(r.status, 0);
 });
@@ -226,15 +291,74 @@ test("an engine's own faulty DDL, supplied through createTables, fails the datab
   assert.equal(r.status, 1);
 });
 
-test('an engine with no legacy SQL: both legacy content_sha checks are skipped, never passed', { skip: !(haveTargets && process.env.SSQL_CH_URL) && 'no SSQL_CH_URL or no SSQL_ADAPTERS' }, () => {
-  const r = runKit(['--profile', 'clickhouse', '--only', 'legacy-content-sha-line-format,legacy-content-sha-whole-rows', '--allow-skip'], withEngine('no-legacy-sql.mjs'), 10 * 60 * 1000);
+test("an engine's error quoting a URL with a password holding @: no part of it is printed, in stdout, stderr or --json", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, async () => {
+  const { PASSWORD } = await import('./engines/leaky-errors.mjs');
+  assert.equal(PASSWORD, AT_PASSWORD);
+  const r = runKit(['--only', 'tables-and-keys'], withEngine('leaky-errors.mjs'), 10 * 60 * 1000);
+  const failed = rows(r).filter((x) => x.part === 'engine' && x.status === 'fail');
+  assert.ok(failed.length && failed.every((x) => /the engine's pass threw: the archive at postgres:\/\/archive\.invalid/.test(x.details.join(' '))), `the engine's error was not reported:\n${r.stdout}${r.stderr}`);
+  assertNoParts(r, [...AT_PARTS, 'fake-archive']);
+  assert.equal(r.status, 1);
+});
+
+test('an engine that keeps its cursor in a table of its own: Crash-safe reads it through cursor(), fails a stop the engine ignores, and without cursor() proves nothing', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const ran = (r) => rows(r).filter((x) => x.status !== 'not run');
+  const ok = runKit(['--only', 'crash-safe', '--verbose'], withEngine('cursor-own-table.mjs'), 10 * 60 * 1000);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(ok.stdout, /the cursor read through the engine's cursor\(\)/);
+  const ignores = runKit(['--only', 'crash-safe'], withEngine('cursor-ignores-stops.mjs'), 10 * 60 * 1000);
+  assert.ok(ran(ignores).length, ignores.stdout + ignores.stderr);
+  for (const x of ran(ignores)) {
+    assert.equal(x.status, 'fail', `${x.column}: ${x.status}`);
+    assert.match(x.details.join(' '), /crashed after entities, pass 1: the cursor \(the engine's cursor\(\)\) changed/);
+  }
+  const hidden = runKit(['--only', 'crash-safe'], withEngine('cursor-hidden.mjs'), 10 * 60 * 1000);
+  assert.ok(ran(hidden).length, hidden.stdout + hidden.stderr);
+  for (const x of ran(hidden)) {
+    assert.equal(x.status, 'skipped', `${x.column}: ${x.status}`);
+    assert.match(x.notes.join(' '), /not proven: the kit cannot see the cursor/);
+  }
+  assert.equal(hidden.status, 1);
+});
+
+test("an engine whose ClickHouse DDL prefixes a sort key with toDate(ts), as §3 allows, passes Tables and keys", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--only', 'tables-and-keys', '--verbose'], withEngine('sort-key-prefix.mjs'), 10 * 60 * 1000);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  if (process.env.SSQL_CH_URL) assert.match(r.stdout, /a sort-key prefix §3 allows: \w*session_parts \(toDate\(ts\)\)/);
+});
+
+test('an engine whose DDL adds a column of its own: Legacy content_sha, whole rows leaves it out of the line (§4.8)', { skip: !(haveTargets && process.env.SSQL_CH_URL) && 'no SSQL_CH_URL or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--profile', 'clickhouse', '--only', 'legacy-content-sha-whole-rows', '--verbose'], withEngine('added-column.mjs'), 10 * 60 * 1000);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /columns the deployment adds, left out of the line \(§4\.8\): session_parts\.tenant, sessions\.tenant/);
+});
+
+test("an engine with a table of the consumer's own whose ts is not Nullable: No time partition leaves it alone", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--only', 'no-time-partition'], withEngine('extra-table.mjs'), 10 * 60 * 1000);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('an engine with no legacy SQL: both legacy checks skip their engine part, never passed', { skip: !(haveTargets && process.env.SSQL_CH_URL) && 'no SSQL_CH_URL or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--profile', 'clickhouse', '--only', 'legacy-content-sha-line-format,legacy-content-sha-whole-rows'], withEngine('no-legacy-sql.mjs'), 10 * 60 * 1000);
   const res = rows(r).filter((x) => x.column === 'clickhouse');
-  assert.equal(res.length, 2, r.stdout);
-  for (const x of res) {
+  const engineRows = res.filter((x) => x.part === 'engine');
+  assert.equal(engineRows.length, 2, r.stdout);
+  for (const x of engineRows) {
     assert.equal(x.status, 'skipped', `${x.id}: ${x.status}`);
     assert.match(x.notes.join(' '), /supplies no legacy SQL/);
   }
-  assert.equal(r.status, 1, 'nothing was checked');
+  // The deployed DDL is still checked, through §4.8's own expression.
+  assert.equal(res.find((x) => x.id === 'legacy-content-sha-whole-rows' && x.part === 'database')?.status, 'pass', r.stdout);
+  assert.equal(r.status, 1, 'the legacy SQL is not proven');
+});
+
+test("an engine with no DDL but a legacy SQL of its own: a wrong legacy SQL fails it, though its database rows are a self-check", { skip: !(haveTargets && process.env.SSQL_CH_URL) && 'no SSQL_CH_URL or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--profile', 'clickhouse', '--only', 'tables-and-keys,legacy-content-sha-whole-rows', '--allow-skip'], withEngine('no-ddl-bad-legacy.mjs'), 10 * 60 * 1000);
+  const row = rows(r).find((x) => x.id === 'legacy-content-sha-whole-rows' && x.part === 'engine' && x.column === 'clickhouse');
+  assert.equal(row?.status, 'fail', r.stdout);
+  assert.equal(row.selfCheck, false);
+  assert.match(row.details.join(' '), /through the engine's legacy SQL/);
+  assert.equal(r.status, 1, r.stdout);
 });
 
 test('an engine that stores large units in several chunks passes Units only', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
@@ -305,6 +429,59 @@ test('an interrupted run drops the namespaces it opened', { skip: !(haveTargets 
   assert.equal(code, 143);
   const left = (await ours()).filter((n) => !before.has(n));
   assert.deepEqual(left, [], 'namespaces left behind');
+});
+
+test('an interrupt while a namespace is being created leaves no namespace behind', { skip: !(haveTargets && process.env.SSQL_CH_URL) && 'no SSQL_CH_URL or no SSQL_ADAPTERS' }, async () => {
+  const http = await import('node:http');
+  const { ClickHouse } = await import('../lib/ch.mjs');
+  const t = readTargets().clickhouse;
+  const ch = new ClickHouse(t);
+  const ours = async () => (await ch.query("SELECT name FROM system.databases WHERE startsWith(name, 'ssql_conf_')")).map((r) => r.name);
+  const before = new Set(await ours());
+  // A proxy in front of the target that holds each CREATE DATABASE for a while before it passes it
+  // on, as a busy server would: the statement is in flight when the signal comes, and the server
+  // runs it all the same.
+  let seen;
+  const createSeen = new Promise((r) => { seen = r; });
+  const forwarded = [];
+  const proxy = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => forwarded.push((async () => {
+      const body = Buffer.concat(chunks);
+      if (/^CREATE DATABASE ssql_conf_/.test(body.toString('utf8'))) {
+        seen();
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !['host', 'connection', 'content-length'].includes(k)));
+      try {
+        const up = await fetch(`${t.url}${req.url}`, { method: req.method, headers, body });
+        const text = Buffer.from(await up.arrayBuffer());
+        res.writeHead(up.status, { 'content-type': up.headers.get('content-type') ?? 'text/plain' });
+        res.end(text);
+      } catch {
+        res.writeHead(502);
+        res.end('the proxy could not reach the target');
+      }
+    })()));
+  });
+  await new Promise((r) => proxy.listen(0, '127.0.0.1', r));
+  let left = [];
+  let code;
+  try {
+    const child = spawn(process.execPath, [KIT, '--profile', 'clickhouse', '--only', 'host-form'], { env: { ...process.env, SSQL_CH_URL: `http://127.0.0.1:${proxy.address().port}` }, stdio: 'ignore' });
+    const exited = new Promise((resolve) => child.on('exit', (c) => resolve(c)));
+    await Promise.race([createSeen, new Promise((_, no) => setTimeout(() => no(new Error('the run sent no CREATE DATABASE')), 60000).unref())]);
+    child.kill('SIGTERM');
+    code = await exited;
+    await Promise.allSettled(forwarded);
+  } finally {
+    proxy.close();
+    left = (await ours()).filter((n) => !before.has(n));
+    for (const n of left) await ch.exec(`DROP DATABASE IF EXISTS ${n} SYNC`);
+  }
+  assert.equal(code, 143);
+  assert.deepEqual(left, [], 'a namespace whose CREATE was in flight at the interrupt was left behind');
 });
 
 test("reference engine: a session id with a quote and a backslash is bound, not spliced, and read back", { skip: !anyTarget && 'no SSQL_CH_URL or SSQL_PG_URL' }, async () => {

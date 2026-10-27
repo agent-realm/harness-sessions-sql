@@ -74,8 +74,14 @@ export function ddlStatements(profile, { qualify, transforms = [] }) {
 
 let nsCounter = 0;
 const RUN = Math.random().toString(36).slice(2, 8);
-// Every namespace not yet dropped, so an interrupted run can drop them (run.mjs).
+// Every namespace not yet dropped, so an interrupted run can drop them (run.mjs). A namespace is
+// registered before its CREATE is sent, so one whose CREATE is in flight is here too.
 export const openNamespaces = new Set();
+// Set once a run is interrupted: no namespace is opened after it.
+let refusing = null;
+export function refuseNewNamespaces(reason) {
+  refusing = reason;
+}
 
 export class Namespace {
   constructor(profile, client, name, prefix) {
@@ -150,8 +156,10 @@ export class Namespace {
     return this.client.query(`SELECT * FROM ${this.t(logical)}`);
   }
 
-  // The client is closed once the namespace is gone; a drop that fails can be tried again.
+  // The client is closed once the namespace is gone; a drop that fails can be tried again. A
+  // CREATE still in flight would make the namespace again after the DROP, so it settles first.
   async drop() {
+    await this.creating?.catch(() => {});
     if (this.profile === 'clickhouse') await this.client.exec(`DROP DATABASE IF EXISTS ${this.name} SYNC`);
     else await this.client.exec(`DROP SCHEMA IF EXISTS ${this.name} CASCADE`);
     openNamespaces.delete(this);
@@ -174,11 +182,22 @@ export async function loadSchema(ns, { transforms = [] } = {}) {
 // A fresh, empty namespace (a ClickHouse database, or a PostgreSQL schema), then `create(ns)` to
 // make its tables: the engine's own DDL (its `createTables`), or this repository's schema/.
 export async function openNamespace(profile, target, { prefix, create = (ns) => loadSchema(ns) } = {}) {
+  if (refusing) throw new Error(refusing);
   const client = clientFor(profile, target);
   const name = `ssql_conf_${RUN}_${++nsCounter}`;
+  // Registered (openNamespaces) before the CREATE is sent; the CREATE kept, so a drop waits for it.
   const ns = new Namespace(profile, client, name, prefix);
-  if (profile === 'clickhouse') await client.exec(`CREATE DATABASE ${name}`);
-  else await client.exec(`CREATE SCHEMA ${name}`);
+  ns.creating = client.exec(profile === 'clickhouse' ? `CREATE DATABASE ${name}` : `CREATE SCHEMA ${name}`);
+  try {
+    await ns.creating;
+  } catch (e) {
+    // Not made, or made where nothing answered: drop it if it is there, and forget it.
+    await ns.drop().catch(() => {
+      openNamespaces.delete(ns);
+      return client.close().catch(() => {});
+    });
+    throw e;
+  }
   try {
     await create(ns);
   } catch (e) {

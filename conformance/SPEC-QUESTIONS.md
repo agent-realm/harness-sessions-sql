@@ -30,10 +30,11 @@ error that a check proved; the spec text is unchanged.
    has no memhouse 0.18 input and cannot run an implementation's conversion. *The kit checks* the
    half the database profile owns: each vector's fields, named by the committed DDL order, loaded
    by name into the deployed table, format back in the deployed DDL order into the line and the
-   sha. Both legacy items run the engine's own legacy SQL (`legacySha`); an engine that supplies
-   none has them skipped, never passed on §4.8's expression. *Question:* should the engine
-   interface gain a conversion hook (a 0.18-shaped input row in, the converted row out), or is the
-   conversion proved by the implementation's own tests?
+   sha, through §4.8's own expression (the database part: the DDL) and through the engine's own
+   legacy SQL (`legacySha`, the engine part). An engine that supplies no legacy SQL has the
+   engine parts of both legacy items skipped, never passed on §4.8's expression. *Question:*
+   should the engine interface gain a conversion hook (a 0.18-shaped input row in, the converted
+   row out), or is the conversion proved by the implementation's own tests?
 
 4. **Legacy content_sha on PostgreSQL (§8, §4.8).** §4.8 computes the sha "where the conversion
    runs" and gives the SQL for ClickHouse only, and a conversion reads a ClickHouse database. *The
@@ -122,7 +123,9 @@ error that a check proved; the spec text is unchanged.
     (`crashPoints`; the reference: after the archive, the entity writes, the removed versions and
     the edges). It checks each stop instead of trusting it: the pass's units are archived, the
     cursor is as it was (so every declared point must lie before the cursor write), and right
-    after the archive write the entity tables are untouched.
+    after the archive write the entity tables are untouched. A cursor is consumer policy (§4.6), so
+    the kit reads it through an engine's `cursor()` where it has one, else from session_sources,
+    and reports the item not proven when it sees neither change over a clean run.
 
 18. **The session-adapters package before npm.** `SSQL_ADAPTERS` is a path or a package name; a
     published package does not ship `fixtures/`, which the engine checks need. Until the fixtures
@@ -189,3 +192,12 @@ error that a check proved; the spec text is unchanged.
     pair is still current while either statement stands, and removes the child's statement first.
     *Question:* does a merged edge keep its key when the statement that gave it `at` is removed?
 
+26. **The sort-key prefix (§3).** "A consumer may prefix the sort key with columns that never change
+    for a key, such as `toDate(ts)` for messages." Which columns never change for a key is not
+    listed: sessions-model §1 rule 7 says so of `ts`, and nothing names another. *The kit accepts*,
+    in ClickHouse, leading sort-key elements that are `ts` or one function of `ts` alone
+    (`toDate(ts)`, `toStartOfHour(ts)`, …), before the identity columns, in any table that has
+    `ts`; any other extra element fails Tables and keys (`toDate(ingested_at)` is one of its
+    faults: it changes between versions, so they never collapse). A PostgreSQL primary key must be
+    the identity exactly. *Question:* is that the allowance, or may a deployment prefix other
+    columns, and is it limited to `session_parts`?

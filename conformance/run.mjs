@@ -25,7 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { targets as readTargets, describeTarget, openNamespace, loadSchema, clientFor, openNamespaces, PROFILES } from './lib/db.mjs';
+import { targets as readTargets, describeTarget, openNamespace, loadSchema, clientFor, openNamespaces, refuseNewNamespaces, PROFILES } from './lib/db.mjs';
 import { loadAdapters } from './lib/adapters.mjs';
 import { expectStates } from './lib/oracle.mjs';
 import { EngineError } from './lib/result.mjs';
@@ -46,12 +46,15 @@ class UsageError extends Error {}
 const dropFailures = [];
 
 // An interrupted run (Ctrl-C, or a test harness's timeout) drops what it opened and removes its
-// fixture copies before it exits.
+// fixture copies before it exits. It opens no namespace after the signal, and each drop waits for
+// its namespace's CREATE to settle (Namespace.drop), so one whose CREATE was in flight is dropped
+// after the server made it, not before.
 let stopping = false;
 for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
   process.on(signal, async () => {
     if (stopping) return;
     stopping = true;
+    refuseNewNamespaces(`the run was interrupted (${signal})`);
     process.stderr.write(`\n${signal}: dropping ${openNamespaces.size} namespace(s) and removing fixture copies\n`);
     removeFixtureCopies();
     // A statement still in flight (a table being created) can make the first drop fail: retry.
@@ -60,7 +63,9 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
         await ns.drop().catch(() => new Promise((r) => setTimeout(r, 250)));
       }
     };
-    const drops = Promise.allSettled([...openNamespaces].map(dropHard));
+    const drops = (async () => {
+      for (let round = 0; round < 3 && openNamespaces.size; round++) await Promise.allSettled([...openNamespaces].map(dropHard));
+    })();
     await Promise.race([drops, new Promise((r) => setTimeout(r, 30000).unref())]);
     if (openNamespaces.size) process.stderr.write(`not dropped: ${[...openNamespaces].map((ns) => ns.name).join(', ')}\n`);
     process.exit(code);
@@ -121,19 +126,9 @@ class Context {
       name: e.name, version: e.version, removal: e.removal ?? 'removed', crashPoints: e.crashPoints,
       pass: (envelopes, opts = {}) => call('pass', () => e.pass(envelopes, opts)),
       replay: (opts = {}) => call('replay', () => e.replay(opts)),
+      cursor: typeof e.cursor === 'function' ? () => call('cursor', () => e.cursor()) : undefined,
       legacySha: typeof e.legacySha === 'function' ? (exprs) => e.legacySha(exprs) : undefined,
     };
-  }
-
-  // A check written as one function with a database and an engine half (the older layout): an
-  // engine that throws fails the check, and the database half's findings stay in the report.
-  async enginePart(problems, fn) {
-    try {
-      await fn();
-    } catch (e) {
-      if (!(e instanceof EngineError)) throw e;
-      problems.push(e.message);
-    }
   }
 
   scenario(name) {
@@ -264,10 +259,21 @@ async function serverVersion(profile, target) {
     const rows = profile === 'clickhouse' ? await c.query('SELECT version() AS v') : await c.query('SHOW server_version');
     return profile === 'clickhouse' ? rows[0].v : rows[0].server_version;
   } catch (e) {
-    return `unreachable (${scrub(e?.message ?? e).slice(0, 80)})`;
+    return `${troubleOf(e)} (${scrub(e?.message ?? e).slice(0, 80)})`;
   } finally {
     await c.close();
   }
+}
+
+// What a target's failed first query says: `refused` when the server answered and turned the
+// credentials down (ClickHouse code 516 or HTTP 401/403; a PostgreSQL SQLSTATE of class 28),
+// `unreachable` when nothing answered, `error` otherwise.
+function troubleOf(e) {
+  const status = String(e?.status ?? '');
+  const message = String(e?.message ?? e);
+  if (status === '401' || status === '403' || /^28/.test(status) || /\bCode: 516\b|AUTHENTICATION_FAILED/.test(message)) return 'refused';
+  if (/unreachable|did not answer/.test(message)) return 'unreachable';
+  return 'error';
 }
 
 function kitCommit() {

@@ -99,6 +99,21 @@ export function fullRowVectors(text = specText()) {
   return out;
 }
 
+// §4.8's own SQL of a legacy line and its sha ("In ClickHouse: `lower(hex(SHA256(…)))`"), and the
+// settings that pin its bytes: a function of the column expressions -> { line, sql, settings },
+// the shape of an engine's `legacySha`.
+export function specLegacySha(text = specText()) {
+  const s48 = section(text, '### 4.8 ');
+  const m = s48.match(/`(lower\(hex\(SHA256\((trimRight\(formatRow\('TabSeparated', <columns>\), '\\n'\))\)\)\))`/);
+  if (!m) throw new Error('spec §4.8: no ClickHouse expression of the legacy sha');
+  const at = s48.indexOf('**What pins the bytes.**');
+  if (at < 0) throw new Error('spec §4.8: no settings that pin the bytes');
+  const pins = s48.slice(at, s48.indexOf('DateTime64', at));
+  const settings = Object.fromEntries([...pins.matchAll(/`(\w+) = '([^']*)'`/g)].map(([, k, v]) => [k, v]));
+  if (Object.keys(settings).length < 3) throw new Error('spec §4.8: fewer than three pinned settings');
+  return (exprs) => ({ line: m[2].replace('<columns>', exprs.join(', ')), sql: m[1].replace('<columns>', exprs.join(', ')), settings });
+}
+
 // §4.8: the columns a legacy content_sha line leaves out, per table.
 export const LEGACY_LINE_EXCLUDES = {
   common: ['content_sha', 'rev', 'is_deleted', 'removed', 'ingested_at', 'writer'],

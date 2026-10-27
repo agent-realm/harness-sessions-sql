@@ -42,9 +42,7 @@ package's `fixtures/` folder, which a checkout has; without it they are skipped,
 **Point it only at a disposable deployment.** Every check creates a namespace of its own
 (`ssql_conf_<run>_<n>`), makes the deployment's tables in it under the prefix (below: the engine's
 DDL), and drops it when the check ends. An interrupted run (Ctrl-C, or a test harness's timeout)
-drops what it opened before it exits. [`compose.yml`](compose.yml) starts a ClickHouse 26 and a
-PostgreSQL 16 for a local container host or a test-deploy tool; its password and bind address
-come from the environment, and its comments say what their defaults are.
+drops what it opened before it exits. [`compose.yml`](compose.yml) starts such a pair (below).
 
 ```sh
 node run.mjs                  # every check on every profile with a target
@@ -66,6 +64,40 @@ parts test, the adapters package and each target's server version, then one row 
 part: `pass`, `fail` (with what failed), `skipped` (cannot run here, with why) or `n/a` (does not
 apply to the profile, with why). A column outside the run's profiles shows `-`. The last line is
 the verdict, with its reasons.
+
+## A disposable pair
+
+[`compose.yml`](compose.yml) starts a ClickHouse 26 and a PostgreSQL 16 on this machine, safe by
+default: both ports on `127.0.0.1` only, and no default password (it refuses to start without
+`SSQL_KIT_PASSWORD`). `SSQL_KIT_CH_PORT` and `SSQL_KIT_PG_PORT` move the ports (default 8123 and
+5432).
+
+```sh
+SSQL_KIT_PASSWORD=… docker compose up -d
+```
+
+To run the pair anywhere else (a disposable host of its own reached through a tunnel, ports a
+deploy tool hands out), write a deployment file of your own and keep it outside this repository,
+so a password or an address of yours never lands in a commit. Either a whole file, for a tool that
+takes one compose file, with the bind address, ports and password that deployment needs:
+
+```yaml
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8
+    environment: { CLICKHOUSE_USER: kit, CLICKHOUSE_PASSWORD: "${MY_KIT_PASSWORD:?}" }
+    ports: ["0.0.0.0:${MY_CH_PORT:?}:8123"]
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_USER: kit, POSTGRES_PASSWORD: "${MY_KIT_PASSWORD:?}", POSTGRES_DB: kit }
+    ports: ["0.0.0.0:${MY_PG_PORT:?}:5432"]
+```
+
+or an override merged over this file (`docker compose -f compose.yml -f ../my-deploy.yml up -d`,
+with `SSQL_KIT_PASSWORD` still set), whose `ports: !override [...]` replaces the loopback binding
+instead of adding to it. Publish on every interface only where nobody else can reach the ports:
+the user `kit` is a PostgreSQL superuser, and a port Docker publishes bypasses the host's
+firewall.
 
 ## The input: envelopes
 
@@ -114,18 +146,18 @@ Each check has a **database** part, an **engine** part, or both, and each part i
 
 | # | §8 item | Parts | What it proves, on what input |
 |---|---|---|---|
-| 1 | Tables and keys | database, engine | the catalogue holds every §3 table under the prefix, keyed by exactly its identity columns (`session_sources` may be absent); after the rewind scenario, every record ever current is still present, so nothing was physically deleted outside principle 3 |
+| 1 | Tables and keys | database, engine | the catalogue holds every §3 table under the prefix, keyed by exactly its identity columns (`session_sources` may be absent; in ClickHouse, §3's sort-key prefix of `ts` or one function of `ts` before them is accepted, and nothing else); after the rewind scenario, every record ever current is still present, so nothing was physically deleted outside principle 3 |
 | 2 | Twice is once | engine | each pass delivered again right after itself (a pass re-run, §5) adds no logical row: the entity tables are unchanged, the cursor gains no row, session_units gains no unit and no generation (only manifests of reads that deliver nothing new) |
-| 3 | Crash-safe | engine | for each crash point (`archive` always, and each later one the engine declares), every pass is stopped there and the stop itself checked (the pass's units archived, the cursor as it was, and at `archive` the entity tables untouched), then re-run on a fresh engine instance: the clean run's logical row counts and current state. And a crash after the archive write whose re-run reads other content (the store changed in between): the clean state of what was committed, live, in the kit's fold of the archive, and in the engine's replay |
+| 3 | Crash-safe | engine | for each crash point (`archive` always, and each later one the engine declares), every pass is stopped there and the stop itself checked (the pass's units archived, the cursor as it was, and at `archive` the entity tables untouched), then re-run on a fresh engine instance: the clean run's logical row counts and current state. The cursor is read through the engine's `cursor()`, else from session_sources; when neither changes over a clean run, the stops are not proven and the row is `skipped`, never `pass`. And a crash after the archive write whose re-run reads other content (the store changed in between): the clean state of what was committed, live, in the kit's fold of the archive, and in the engine's replay |
 | 4 | Removed equals not live | engine | after each pass of a Copilot rewind, an OpenCode revert and a Gemini `$rewindTo`: the current records are the pass's `live` sets with their derived shas; each key that left `live` is a removed version that copies its last row column by column (or gone, for a tombstoning engine); totals over current rows equal those over live records; a retracted message stays current |
 | 5 | Edges outlive statements correctly | engine | the OpenCode child/task pair merges into one edge (`stated_on: both`, at the call); a child-only re-derive keeps that edge, still merged; removing the child's statement while the parent's stands keeps an edge; removing the last ends it |
 | 6 | Zero-part messages | engine | an assistant message with no parts is exactly one row, `part_id ''`, `kind 'none'`, the message's sha in both sha columns |
 | 7 | Registries take new values | database | unseen `harness`, `ts_source` and `enc` values are accepted and read back as given |
 | 8 | Host form | database | in every table with a key `host`: host/v0 and `r-` values accepted; a hostname, uppercase hex, 31 or 33 hex digits, 32 with a prefix or a suffix, `r-` with 31 or 33, and `''` rejected; a `legacy` entity row exempt; the link reference hosts alike |
-| 9 | No time partition | database, engine | no entity table has a time partition key, every `ts` is Nullable, and Zed's null `ts` values, on messages and lifecycle records, are stored null |
+| 9 | No time partition | database, engine | no entity table has a time partition key, every `ts` of a §3 table is Nullable (a consumer's own tables left alone), and Zed's null `ts` values, on messages and lifecycle records, are stored null |
 | 10 | Units only | engine | every unit (its chunks joined, if several) equals a unit a read emitted (a cut last line, held back by `read`, never lands); every row with `unit_key ''` is a manifest of §4.1's shape that records its read; every adapter-owned record is one the adapter derived, each row with the shas §4 gives it (a part row: the sha of the part as emitted) |
 | 11 | Legacy content_sha, line format | engine | each §4.8 known-answer vector gives its line and its sha through the engine's legacy SQL (ClickHouse; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
-| 12 | Legacy content_sha, whole rows | database | each §4.8 full-row vector, loaded by column name into the deployed table, formats back in DDL order through the engine's legacy SQL into its line and its sha (ClickHouse; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
+| 12 | Legacy content_sha, whole rows | database, engine | each §4.8 full-row vector, loaded by column name into the deployed table, formats back in DDL order into its line and its sha, a column the deployment adds left out of the line (§4.8): the database part through §4.8's own expression (the DDL), the engine part through the engine's legacy SQL, which counts in the verdict even when the database part is a self-check (ClickHouse; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
 | 13 | Two hosts, two sessions | engine | one harness store read under two hosts gives every session under both, two session keys, each with all its records in every entity table |
 | 14 | Absences replay | engine | for the four absences (a source reset to empty, a vanished source kept, one removed, a delta's gone keys): after each live pass, the records against the contract and the kit's fold of the archive against the reads; every manifest against §4.1; then the archive alone, copied and replayed, gives the live namespace's rows, removed versions included |
 | 15 | No-op manifests | engine | the archive replayed with and without its no-op manifests (left out by their whole identity) gives the same state |
@@ -154,9 +186,17 @@ make it fail:
   columns swapped.
 
 The list, with what each breaks, is [`reference/faults.mjs`](reference/faults.mjs). The kit's own
-tests add test engines ([`test/engines/`](test/engines/)): one with no DDL (self-check rows), one
-whose own DDL lacks the host check, one with no legacy SQL, and one that stores large units in
-several chunks, which the kit must accept.
+tests add test engines ([`test/engines/`](test/engines/)), each a conforming deployment the kit
+must accept or a fault in an engine's own code the kit must catch:
+
+- accepted: one that stores large units in several chunks; one whose ClickHouse DDL prefixes a
+  sort key with `toDate(ts)`; one that adds a column of its own to two tables; one with a table of
+  its own beside the §3 tables; one that keeps its cursor in a table of its own and exposes it as
+  `cursor()`;
+- caught or not proven: one with no DDL (self-check rows); one whose own DDL lacks the host check;
+  one with no legacy SQL; one with no DDL and a wrong legacy SQL; one that hides its cursor and
+  ignores its later crash points (not proven), and one that exposes it and ignores them (fails);
+  two whose errors quote a URL with a password the kit was never given, which it must not print.
 
 ## Plugging in an engine
 
@@ -186,6 +226,7 @@ Both receive:
 | `name`, `version` | printed in the report |
 | `pass(envelopes, {crashAfter})` | one ingest pass (spec §5). With `crashAfter`, stop right after that step and return, as a killed process would; `'archive'` is right after the archive write. The kit checks that the stop happened there |
 | `crashPoints` | optional: the later `crashAfter` values the engine supports; `'archive'` is always run. Each lies before the cursor write |
+| `cursor()` | optional: the engine's committed cursor as it is stored (any JSON value), read from its store, so that any instance on the namespace returns the same. Crash-safe compares it before and after each stop. Without it the kit reads session_sources; an engine that keeps its cursor elsewhere (§4.6 allows it) and has no `cursor()` gets Crash-safe reported not proven |
 | `replay({adapterVer})` | re-derive every session from session_units alone. `adapterVer` is `{harness: version}`: replay with that adapter version, which the kit supplies through `adapters.adapterFor` |
 | `removal` | optional: `'removed'` (default) for removed versions, `'tombstone'` for a tombstoning engine |
 | `legacySha(exprs)` | optional, ClickHouse: `{line, sql, settings}`, the engine's SQL of a legacy TabSeparated line and its sha over the column expressions. Without it the two legacy checks are skipped: they prove the implementation's SQL |

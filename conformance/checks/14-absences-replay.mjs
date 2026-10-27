@@ -26,7 +26,7 @@ import { verdict } from '../lib/result.mjs';
 export default {
   id: 'absences-replay',
   title: 'Absences replay',
-  faults: ['engine:no-manifest', 'engine:ignore-policy', 'engine:policy-kept-as-removed', 'engine:private-manifest'],
+  faults: ['engine:no-manifest', 'engine:ignore-policy', 'engine:policy-kept-as-removed', 'engine:private-manifest', 'engine:manifest-whole-generation'],
 
   async engine(ctx) {
     const problems = [];
