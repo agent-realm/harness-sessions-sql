@@ -44,8 +44,8 @@ export const DDL_FAULTS = {
 
   // The host form checks without their anchors: a value holding 32 hex digits anywhere passes.
   'host-check-unanchored': (t, p) => (p === 'clickhouse'
-    ? once(t, /'\^\(r-\)\?\[0-9a-f\]\{32\}\$'/g, "'(r-)?[0-9a-f]{32}'", 'host-check-unanchored')
-    : once(t, /'\^\(r-\)\?\[0-9a-f\]\{32\}\$'/g, "'(r-)?[0-9a-f]{32}'", 'host-check-unanchored')),
+    ? once(t, /'\^\(\[rs\]-\)\?\[0-9a-f\]\{32\}\$'/g, "'([rs]-)?[0-9a-f]{32}'", 'host-check-unanchored')
+    : once(t, /'\^\(\[rs\]-\)\?\[0-9a-f\]\{32\}\$'/g, "'([rs]-)?[0-9a-f]{32}'", 'host-check-unanchored')),
 
   // A message's ts that cannot be null.
   'ts-not-null': (t, p) => (p === 'clickhouse'
