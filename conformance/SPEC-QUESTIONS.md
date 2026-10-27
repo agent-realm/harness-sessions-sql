@@ -34,7 +34,7 @@ the answers can be read against them.
 | 27 | open | none |
 | 28 | open (a kit convention) | none |
 | 29 | §3 Derived columns, §8 Redaction holds | Redaction holds judges a column the deployment adds against the records of the row's session; a second pass removes a message that holds a planted value; two faults and three test engines |
-| 30 | open | none: the kit takes principle 3 for a removed version's added columns |
+| 30 | §2 principles 1 and 3, §3 Derived columns | none: the kit already judges history rows against the session's records, current or removed; forgotten content is not checked until an engine honours forget notices |
 
 ## Checks that cannot run as §8 words them
 
@@ -383,4 +383,8 @@ the answers can be read against them.
     another session's, never a redacted value. *Question:* is a derived column in a removed version
     (and in the archive) a copy of the row it had, or recomputed from the current records?
 
-    *Open:* v1 does not settle it.
+    *Answered (§2 principles 1 and 3, §3):* the current state is judged against the session's current
+    records; a history row (a removed version, an archive row, the cursor) is a copy by design and is
+    judged against the session's records, current or removed. One exception holds for history too:
+    forgotten content is held by no row (§2 principle 1). The kit has no forget scenario, so that
+    sentence is not checked until an engine honours forget notices (sessions v1.1).
