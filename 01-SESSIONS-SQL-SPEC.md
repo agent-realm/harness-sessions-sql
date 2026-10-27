@@ -66,6 +66,10 @@ guarantees:
 
 1. **The archive is the truth.** `session_units` keeps every raw unit the seam delivered. Entity
    tables are a projection of it.
+   - **Forgotten content is held by no row.** Where an engine honours forget notices (sessions
+     v1.1), a forgotten unit's content survives in no row: not in `session_units`, not in a
+     removed version, not in a derived column. The forget rules are the one exception to the
+     archive being append-only and to history rows never being recomputed.
 2. **Keys come from the contract, verbatim.** A session belongs to one data folder on one host
    (sessions-model §1 rule 1), so the session key is
    `(host, harness, harness_path, session_id, incarnation)`, and every table's key starts with it.
