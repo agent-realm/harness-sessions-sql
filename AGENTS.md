@@ -79,6 +79,29 @@ session adapters ──produce──▶ sessions-model records ──mapped by�
   its output against the expected output in its README (`examples/README.md`).
 - Use throwaway containers only with `docker rm -f -v`.
 
+## Installing and deploying
+
+sessions-sql is a standard, not a service: deploying it means making its tables in a database and
+checking the engine that writes them. The steps, with
+[the tutorial](docs/tutorials/from-empty-database-to-conforming-store.md) and
+[`conformance/README.md`](conformance/README.md) as the reference:
+
+1. **The tables.** Load `schema/clickhouse.sql` or `schema/postgres.sql` into the deployment's
+   database, each table under the deployment's prefix where it has one (spec §3, physical table
+   names).
+2. **A disposable pair, for tests.** `conformance/compose.yml` starts a ClickHouse and a PostgreSQL
+   on `127.0.0.1`: `SSQL_KIT_PASSWORD=… docker compose up -d` in `conformance/`. Wait until both
+   answer before anything runs against them; the tutorial's first step gives a check for each.
+3. **The variables.** `SSQL_CH_URL`, `SSQL_CH_USER` and `SSQL_CH_PASSWORD`, and/or `SSQL_PG_URL`,
+   for the targets; `SSQL_ADAPTERS` for the session-adapters package (a checkout, for its
+   fixtures); `SSQL_ENGINE`, `SSQL_PREFIX` and `SSQL_TIMEOUT_MS` to adjust a kit run
+   (`conformance/README.md`, What it needs).
+4. **Dependencies.** `npm ci` in `conformance/`. `examples/` has none of its own: it uses the kit's.
+5. **Run.** `node conformance/run.mjs` checks an engine (the reference engine by default), and
+   `npm test` in `conformance/` runs the kit's own tests; `npm test` in `examples/` runs the
+   examples.
+6. **Before every push**, the guard (Testing, above).
+
 ## Contract links
 
 The links to sessions-model and sessions share one base, `https://github.com/agent-realm/sessions-model/blob/main/contracts/`,
