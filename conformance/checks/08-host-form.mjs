@@ -12,8 +12,6 @@
 // - in the entity tables, a hostname row whose adapter is `legacy` is accepted (§4.8);
 // - session_links' reference hosts (other_host, child_host, origin_host) follow the same rule,
 //   with '' (the stating session's own harness store) accepted.
-//
-// Not run yet: the s- cases have not been run against either database profile.
 
 import { insertRows } from '../lib/db.mjs';
 import { syntheticRows, HOST_A } from '../envelopes.mjs';
