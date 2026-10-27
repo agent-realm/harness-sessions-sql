@@ -2,9 +2,9 @@
 
 SQL only, in both database profiles. One session record goes through a revision, a late re-send
 of an older version and a removal; beside it, a session under a key that an upgraded adapter no
-longer produces is deleted physically. After each step the example reads what a reader sees. [`clickhouse.sql`](clickhouse.sql) and
-[`postgres.sql`](postgres.sql) tell the same story, each in its profile's own SQL, and print the
-same output.
+longer produces is deleted physically. After each step the example reads what a reader sees.
+[`clickhouse.sql`](clickhouse.sql) and [`postgres.sql`](postgres.sql) tell the same story, each in
+its profile's own SQL, and print the same output.
 
 ## What it shows
 
