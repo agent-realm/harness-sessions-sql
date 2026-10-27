@@ -22,6 +22,15 @@ export SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=kit SSQL_CH_PASSWORD="$SSQ
 export SSQL_PG_URL="postgres://kit:$SSQL_KIT_PASSWORD@localhost:5432/kit"
 ```
 
+The servers take a few seconds to start. Wait until both answer before step 2:
+
+```sh
+until curl -sf http://localhost:8123/ping; do sleep 1; done
+until (cd conformance && docker compose exec postgres pg_isready -U kit -d kit); do sleep 1; done
+```
+
+ClickHouse answers `Ok.`, and `pg_isready` reports that PostgreSQL is accepting connections.
+
 When you are done, with `SSQL_KIT_PASSWORD` still set: `(cd conformance && docker compose down -v)`.
 
 ## 2. Load the DDL, write one session, read it back

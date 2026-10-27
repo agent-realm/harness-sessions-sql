@@ -15,7 +15,7 @@ is defined in [Plugging in an engine][plug]:
 |---|---|---|
 | `createEngine(options)` | yes | returns the engine, once per namespace |
 | `createTables(options)` | no | makes the tables with your own DDL. Without it the kit loads `schema/`, and the database parts become a self-check of `schema/`, outside your verdict |
-| `name`, `version` | yes | printed in the report |
+| `name`, `version` | no | printed in the report; without a module `name`, the report names the engine by `SSQL_ENGINE`'s value |
 | `pass(envelopes, { crashAfter })` | yes | one ingest pass ([§5][s5]), stopping after the step `crashAfter` names |
 | `replay({ adapterVer })` | yes | re-derive every session from `session_units` alone ([§4.1][s41]) |
 | `crashPoints` | no | the later crash points it supports; `'archive'` is always run |
@@ -75,7 +75,10 @@ the engine: 48 pass, 3 n/a
 exit 0: 48 row(s) checked
 ```
 
-- **pass** and **fail**: the item held or not; a fail lists what failed.
+- **pass** and **fail**: the item held or not; a fail lists what failed, and an engine call that
+  threw is a fail.
+- **error**: the check itself threw (a database error, say, rather than your engine's); it counts
+  as a fail.
 - **n/a**: the item does not apply to that profile (the legacy items are ClickHouse database
   profile items), with why.
 - **skipped**: it could not run here (no fixtures, no legacy SQL), with why. Not a pass.
@@ -84,9 +87,9 @@ exit 0: 48 row(s) checked
 - **self-check**: a database part run against `schema/` because the engine has no `createTables`;
   it is no part of your verdict.
 
-The last line is the verdict. Exit 0 when every selected row ran and passed; 1 when a row failed,
-or a row was skipped or only a self-check (unless `--allow-skip`), or nothing was checked; 2 for a
-usage error, such as an unknown check id or no target at all.
+The last line is the verdict. Exit 0 when every selected row ran and passed; 1 when a row failed or
+errored, or a row was skipped or only a self-check (unless `--allow-skip`), or nothing was checked;
+2 for a usage error, such as an unknown check id or no target at all.
 
 ## 4. Narrow a run
 
