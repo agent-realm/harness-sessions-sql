@@ -130,6 +130,7 @@ function kitLines(report, profile) {
 }
 
 await runExample({
+  sessionAdapters: true,
   async run({ profile, namespace }) {
     const adapters = await sessionAdapters();
     const passes = readPasses(adapters);

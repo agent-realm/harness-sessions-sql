@@ -12,11 +12,15 @@
 //
 // A README gives its expected output as a fenced block on the line after a comment line
 // `<!-- expected: <profile>[, <profile>] -->`, for each profile it names; the profiles it names
-// must be those the example runs on (`node example.mjs --profiles`). Any line holding
-// `<!-- expected` that does not parse so, in any case, or that names an unknown profile, fails the
-// example. A README whose output depends on the session-adapters package's version says which in a
-// line `<!-- session-adapters: <version> -->`; with another version in SSQL_ADAPTERS, its runs fail
-// with that reason, unrun.
+// must be those the example runs on (`node example.mjs --about`). Any line holding `<!-- expected`
+// that does not parse so, in any case, or that names an unknown profile, fails the example on the
+// profile it concerns (every profile, when that cannot be told).
+//
+// An example that reads the session-adapters package (`--about` says so) prints counts of that
+// package's version, so its README names the version in a line `<!-- session-adapters: <version>
+// -->`, and must: a README without one, or with a line holding `<!-- session-adapters` (or the
+// singular, in any case) that does not parse so, fails the example. With another version in
+// SSQL_ADAPTERS, its runs fail with that reason, unrun.
 //
 // The example runs once per profile, `node example.mjs --profile <profile>`, and its standard output
 // must equal the block. Before and after every run the test lists the target's namespaces: one the
@@ -27,7 +31,10 @@
 //
 // And it checks the examples' seal (lib/records.mjs) on records that leave out members a seal fills
 // in: against known answers computed with session-adapters 1.0.0's seal, and, with SSQL_ADAPTERS,
-// against the package's own src/records.js.
+// against the package's own src/records.js. With SSQL_ADAPTERS set but its package's seal not
+// loadable, the seal check fails, --allow-skip or not: --allow-skip accepts an example that cannot
+// run here for want of something (example 05 without SSQL_ADAPTERS), while a SSQL_ADAPTERS that is
+// set and does not load is a broken setting, and the comparison it asks for did not happen.
 //
 // Exit 0: every selected example ran and printed its expected output, and the seal check passed.
 // Exit 1: one failed or printed something else, left a namespace behind, a check failed, (without
@@ -67,9 +74,15 @@ function parseArgs(argv) {
 
 const EXPECTED = /^<!-- expected: ([a-z]+(?:, [a-z]+)*) -->$/;
 const ADAPTERS_VERSION = /^<!-- session-adapters: (\d+\.\d+\.\d+) -->$/;
+// The profile names on a marker line that does not parse, read loosely, to tell which row it
+// concerns.
+const looseProfiles = (line) => ((line.match(/<!--\s*expected\s*:?\s*([^>]*?)\s*-->/i) ?? [])[1] ?? '')
+  .split(/[\s,]+/).map((p) => p.toLowerCase()).filter((p) => PROFILES.includes(p));
 
 // A README's expected blocks ({ profile: text }), the adapters version it names (or null), and what
-// is wrong with its markers.
+// is wrong with its markers: [{ why, profiles }], `profiles` the rows a problem concerns: a list,
+// 'missing' (the profiles the example runs on that the README gives no block for), or null (every
+// profile the example runs on, or every row when the example cannot say which).
 function readmeOf(name) {
   const lines = fs.readFileSync(path.join(HERE, name, 'README.md'), 'utf8').split('\n');
   const expected = {};
@@ -77,33 +90,40 @@ function readmeOf(name) {
   let adapters = null;
   lines.forEach((line, i) => {
     const at = `${name}/README.md:${i + 1}`;
-    if (/<!--\s*session-adapters/i.test(line)) {
+    if (/<!--\s*session-adapters?/i.test(line)) {
       const m = line.match(ADAPTERS_VERSION);
-      if (!m) problems.push(`${at}: a session-adapters marker that does not parse`);
-      else if (adapters) problems.push(`${at}: a second session-adapters marker`);
+      if (!m) problems.push({ why: `${at}: a session-adapters marker that does not parse (it must read \`<!-- session-adapters: <version> -->\`)`, profiles: null });
+      else if (adapters) problems.push({ why: `${at}: a second session-adapters marker`, profiles: null });
       else adapters = m[1];
     }
     if (!/<!--\s*expected/i.test(line)) return;
     const m = line.match(EXPECTED);
-    if (!m) return problems.push(`${at}: an expected-output marker that does not parse (it must read \`<!-- expected: <profile>[, <profile>] -->\`)`);
-    if (!/^```[a-z]*$/.test(lines[i + 1] ?? '')) return problems.push(`${at}: no fenced block on the line after the marker`);
+    if (!m) {
+      const named = looseProfiles(line);
+      return problems.push({ why: `${at}: an expected-output marker that does not parse (it must read \`<!-- expected: <profile>[, <profile>] -->\`)`, profiles: named.length ? named : 'missing' });
+    }
+    const named = m[1].split(', ').filter((p) => PROFILES.includes(p));
+    if (!/^```[a-z]*$/.test(lines[i + 1] ?? '')) return problems.push({ why: `${at}: no fenced block on the line after the marker`, profiles: named.length ? named : 'missing' });
     const end = lines.findIndex((l, k) => k > i + 1 && l === '```');
-    if (end < 0) return problems.push(`${at}: the fenced block after the marker never closes`);
+    if (end < 0) return problems.push({ why: `${at}: the fenced block after the marker never closes`, profiles: named.length ? named : 'missing' });
     for (const p of m[1].split(', ')) {
-      if (!PROFILES.includes(p)) problems.push(`${at}: unknown profile ${p} (the profiles are ${PROFILES.join(', ')})`);
-      else if (p in expected) problems.push(`${at}: a second expected block for ${p}`);
+      if (!PROFILES.includes(p)) problems.push({ why: `${at}: unknown profile ${p} (the profiles are ${PROFILES.join(', ')})`, profiles: 'missing' });
+      else if (p in expected) problems.push({ why: `${at}: a second expected block for ${p}`, profiles: [p] });
       else expected[p] = lines.slice(i + 2, end).join('\n');
     }
   });
-  if (!Object.keys(expected).length && !problems.length) problems.push(`${name}/README.md: no expected output`);
   return { expected, adapters, problems };
 }
 
-// The profiles an example runs on, as it says itself.
-function profilesOf(name) {
-  const r = spawnSync(process.execPath, [path.join(HERE, name, 'example.mjs'), '--profiles'], { encoding: 'utf8', timeout: 60000 });
-  if (r.status !== 0) return { error: `${name}: --profiles exited ${r.status}: ${scrub(String(r.stderr ?? '').trim().split('\n').at(-1) ?? '')}` };
-  return { profiles: r.stdout.trim().split(',').filter(Boolean) };
+// What an example says of itself: { profiles, sessionAdapters }.
+function aboutOf(name) {
+  const r = spawnSync(process.execPath, [path.join(HERE, name, 'example.mjs'), '--about'], { encoding: 'utf8', timeout: 60000 });
+  try {
+    if (r.status !== 0) throw new Error(`exit ${r.status}: ${scrub(String(r.stderr ?? '').trim().split('\n').at(-1) ?? '')}`);
+    return JSON.parse(r.stdout);
+  } catch (e) {
+    return { error: `${name}: --about failed: ${e.message}` };
+  }
 }
 
 function examples() {
@@ -111,14 +131,25 @@ function examples() {
     .filter((d) => d.isDirectory() && /^\d\d-/.test(d.name)).map((d) => d.name).sort()
     .map((name) => {
       const readme = readmeOf(name);
-      const own = profilesOf(name);
-      if (own.error) readme.problems.push(own.error);
+      const about = aboutOf(name);
+      const problems = readme.problems;
+      if (about.error) problems.push({ why: about.error, profiles: null });
       else {
-        const named = Object.keys(readme.expected).sort().join(', ');
-        const runs = [...own.profiles].sort().join(', ');
-        if (named !== runs && !readme.problems.length) readme.problems.push(`${name}: the README gives output for ${named || 'no profile'}, the example runs on ${runs}`);
+        const missing = about.profiles.filter((p) => !(p in readme.expected));
+        for (const p of missing) problems.push({ why: `${name}: the example runs on ${p}, and its README gives no output for it`, profiles: [p] });
+        for (const p of Object.keys(readme.expected).filter((x) => !about.profiles.includes(x))) {
+          problems.push({ why: `${name}: the README gives output for ${p}, and the example does not run on it`, profiles: [p] });
+        }
+        for (const pr of problems) if (pr.profiles === 'missing') pr.profiles = missing.length ? missing : null;
+        if (about.sessionAdapters && !readme.adapters && !problems.some((pr) => /session-adapters marker/.test(pr.why))) {
+          problems.push({ why: `${name}: the example reads the session-adapters package, and its README names no version (\`<!-- session-adapters: <version> -->\`)`, profiles: null });
+        }
+        if (!about.sessionAdapters && readme.adapters) problems.push({ why: `${name}: the README names a session-adapters version, and the example does not read the package`, profiles: null });
+        // A problem of the whole README concerns every profile the example runs on.
+        for (const pr of problems) if (pr.profiles === null) pr.profiles = about.profiles;
       }
-      return { name, n: name.slice(0, 2), ...readme };
+      for (const pr of problems) if (pr.profiles === 'missing') pr.profiles = null;
+      return { name, n: name.slice(0, 2), expected: readme.expected, adapters: readme.adapters, problems };
     });
 }
 
@@ -285,7 +316,8 @@ async function main() {
   for (const ex of chosen) {
     for (const profile of PROFILES) {
       let r;
-      if (ex.problems.length) r = { status: 'fail', why: ex.problems.join('\n') };
+      const mine = ex.problems.filter((pr) => pr.profiles === null || pr.profiles.includes(profile));
+      if (mine.length) r = { status: 'fail', why: mine.map((pr) => pr.why).join('\n') };
       else if (!(profile in ex.expected)) r = { status: '-' };
       else if (!selected.includes(profile)) r = { status: 'not run', why: targets[profile] ? 'not selected (--profile)' : `no target (${ENV[profile]})` };
       else if (ex.adapters && version !== null && version !== ex.adapters) {

@@ -7,7 +7,9 @@
 //
 //   node example.mjs                       every profile the example runs on that has a target
 //   node example.mjs --profile <profile>   that profile only: clickhouse or postgres
-//   node example.mjs --profiles            print the profiles the example runs on, and exit
+//   node example.mjs --about               print, as one line of JSON, the profiles the example runs
+//                                          on and whether it reads the session-adapters package
+//                                          (SSQL_ADAPTERS), and exit
 //
 // Without --profile, and with more than one profile to run, each profile's output follows a line
 // `== <profile> ==`.
@@ -59,7 +61,7 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
 }
 
 function parseArgs(argv) {
-  if (argv.length === 1 && argv[0] === '--profiles') return { list: true };
+  if (argv.length === 1 && argv[0] === '--about') return { about: true };
   let profile = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] !== '--profile') throw new Usage(`unknown argument ${argv[i]}`);
@@ -71,12 +73,14 @@ function parseArgs(argv) {
 
 // Run `run(ctx)` once per selected profile. `ctx`: { profile, target, namespace() }, where
 // namespace() opens a fresh namespace with schema/'s tables, dropped when this profile's run ends.
-export async function runExample({ profiles = PROFILES, run }) {
+// `sessionAdapters`: whether the example reads the session-adapters package, so its README names
+// the version its output is from (examples/test.mjs).
+export async function runExample({ profiles = PROFILES, sessionAdapters = false, run }) {
   let notDropped = 0;
   try {
-    const { profile: only, list } = parseArgs(process.argv.slice(2));
-    if (list) {
-      console.log(profiles.join(','));
+    const { profile: only, about } = parseArgs(process.argv.slice(2));
+    if (about) {
+      console.log(JSON.stringify({ profiles, sessionAdapters }));
       return;
     }
     const targets = readTargets();

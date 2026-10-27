@@ -51,16 +51,28 @@ commit `5ab0659`: example 05 reads its `fixtures/`, and its expected output is t
 
 [`test.mjs`](test.mjs) runs each example once per profile that has a target, and checks that it
 prints exactly its README's expected output (the fenced block on the line after
-`<!-- expected: <profile>[, <profile>] -->`), and that it leaves no namespace behind. A marker that
-does not parse, an unknown profile, or a README whose profiles are not those the example runs on
-fails the example. It then interrupts one example per profile while it holds namespaces open
-(example 05 while the kit it runs is running too, or example 04 when 05 did not run), and checks
-that nothing it opened is left. It also checks the examples' seal ([`lib/records.mjs`](lib/records.mjs))
-against the session-adapters package's own, on records that leave out members a seal fills in.
+`<!-- expected: <profile>[, <profile>] -->`), and that it leaves no namespace behind.
+
+- **The READMEs' markers.** A marker that does not parse, in any case, an unknown profile, or a
+  README whose profiles are not those the example runs on fails the example, on the profile it
+  concerns. An example that reads the session-adapters package (example 05) must name the version
+  its output is from in a line `<!-- session-adapters: <version> -->`; a missing or misspelled one
+  fails it, and so does running it with another version in `SSQL_ADAPTERS`.
+- **Interrupts.** It interrupts one example per profile while it holds namespaces open (example 05
+  while the kit it runs is running too, or example 04 when 05 did not run), and checks that nothing
+  it opened is left.
+- **The seal.** It checks the examples' seal ([`lib/records.mjs`](lib/records.mjs)) on records that
+  leave out members a seal fills in: against known answers computed with session-adapters 1.0.0's
+  own seal, always, and against the package's seal itself when `SSQL_ADAPTERS` is set.
+
 `node test.mjs --only 01,03`, `--profile postgres` and `--allow-skip` narrow or relax a run. It
 exits 0 when every run printed its expected output and every check passed; 1 when one failed,
 printed something else, left a namespace behind, or (without `--allow-skip`) was skipped, when
 nothing ran, or when the test itself failed; 2 for a usage error, or no target at all.
+`--allow-skip` accepts an example that cannot run here for want of something, such as example 05
+without `SSQL_ADAPTERS`. It does not accept a failed seal check: with `SSQL_ADAPTERS` set but its
+package's seal not loadable, the setting is broken and the comparison it asks for did not happen,
+so the run fails, with the reason.
 
 **Point them only at a disposable deployment.** Each example works in a fresh database (ClickHouse)
 or schema (PostgreSQL) of its own, holding [`schema/`](../schema/)'s tables, and drops it when it
@@ -71,7 +83,8 @@ ever printed: every message goes through the kit's scrub
 
 An example exits 0 when it is done, 1 when it failed or could not drop a namespace it opened, 2
 for a usage error, and 3 when it is skipped because it cannot run here (example 05 without the
-session adapters' fixtures). `node example.mjs --profiles` prints the profiles it runs on.
+session adapters' fixtures). `node example.mjs --about` prints, as one line of JSON, the profiles
+it runs on and whether it reads the session-adapters package.
 
 ## Layout
 
