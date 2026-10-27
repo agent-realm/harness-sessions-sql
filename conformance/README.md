@@ -16,7 +16,7 @@ These are the checks of `01-SESSIONS-SQL-SPEC.md` §8, as they will run.
 | Absences replay | a still-listed source reset to empty; a vanished source with `"policy": "kept"`; a vanished source with `"policy": "removed"`; a delta read with `gone` keys; each then replayed from `session_units` alone | the live pass's current state in each case, removed versions included (kept: the last generation stays current; removed and empty reset: nothing current) |
 | No-op manifests | the same passes with and without the manifests of reads that opened no generation and delivered nothing | equal replayed current state |
 | Host form | a row keyed by a hostname (`my-laptop`), its `adapter` not `legacy` | rejected by both database profiles |
-| Service-held host | a row keyed by `s-b8fdcc6d6c24b3fd5ad7e508e6143416` (claude.ai, sessions-model v1.2's known answer) with `harness_path` `https://claude.ai` | accepted by both database profiles |
+| Service-held host | a row keyed by `s-b8fdcc6d6c24b3fd5ad7e508e6143416` (claude.ai, sessions-model v1.3's known answer) with `harness_path` `https://claude.ai` | accepted by both database profiles |
 | Two hosts, two sessions | one harness store's units under two `host` values | two sessions with the same `session_id` and different session keys |
 | Re-derive from the archive | `session_units` alone, with a bumped `adapter_ver` | higher `rev`s; only keys the new version no longer produces are physically deleted |
 | Null is unknown | usage with null counters | nulls stay null |

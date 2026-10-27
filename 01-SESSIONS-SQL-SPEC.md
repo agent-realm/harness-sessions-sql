@@ -71,7 +71,7 @@ guarantees:
    resolved, in the case the filesystem stores. `host` is the sessions-model §1 value: the
    first 32 lowercase hex digits of sha256(`"sessions-model/host/v0:"` + the OS machine id), or
    `r-` + 32 hex where no machine id can be read, or, for a service-held harness store (claude.ai's
-   conversations, read from an export; sessions-model v1.2), `s-` + 32 hex derived from the
+   conversations, read from an export; sessions-model v1.3), `s-` + 32 hex derived from the
    service's domain, with the service's origin (`https://claude.ai`) as `harness_path`. It is never
    a hostname. Both database profiles reject any
    other form, a Postgres `CHECK` and a ClickHouse `CONSTRAINT` on every key `host`, with one
