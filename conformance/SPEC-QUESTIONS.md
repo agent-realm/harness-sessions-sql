@@ -6,8 +6,8 @@ invented silently, and the question the specification should settle.
 
 **Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17, 29 and 30 (29 and 30
 came from v1's derived columns, §3); 6 and 18 belong to the session-adapters package. 19 to 28
-and 31 to 35 are open, as v1 does not settle them: 27 and 28 came from the kit's last review, 31
-from the first production engine's inferred edges, and 32 to 35 from the review of the examples
+and 31 to 36 are open, as v1 does not settle them: 27 and 28 came from the kit's last review, 31
+from the first production engine's inferred edges, and 32 to 36 from the review of the examples
 (`examples/`) and the docs (`docs/`). Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so
 the answers can be read against them.
@@ -42,6 +42,7 @@ the answers can be read against them.
 | 33 | open | none |
 | 34 | open | none (example 03 leaves such a total null) |
 | 35 | open | none (the kit judges such a column as it judges a derived one) |
+| 36 | open | none (the kit formats the line in the deployed table's column order) |
 
 ## Checks that cannot run as §8 words them
 
@@ -476,5 +477,22 @@ the answers can be read against them.
     this reading for its worked `tenant` column). *Question:* may a deployment add columns that are
     not derived, and under which rules: out of every key and `content_sha`, as a derived column is,
     and holding no other session's values and no redacted value?
+
+    *Open:* v1 does not settle it.
+
+## Legacy lines
+
+36. **The column order of a legacy line (§4.8, §8 Legacy content_sha, whole rows).** §4.8 defines a
+    legacy row's line as "the row's columns, in this specification's DDL order for that table", and
+    §8's database half loads a vector's fields "into the deployed table" to "format back in this
+    specification's DDL order into that line". Nothing requires the deployed table itself to keep
+    that order. *The kit* formats the line in the deployed table's own column order, the columns a
+    deployment adds left out, so a table whose specification columns sit in another order gives
+    another line and fails the item; its control `ddl:reorder-columns` (two columns of `sessions`
+    and two of `session_parts` swapped) is one such table. Read as §8 words it, a deployment whose
+    legacy SQL names the columns in this specification's DDL order would conform with reordered
+    columns, and the kit fails it. *Question:* is the line formatted in this specification's DDL
+    order whatever the deployed table's column order, or must a deployment that converts legacy
+    rows keep that order in its tables?
 
     *Open:* v1 does not settle it.

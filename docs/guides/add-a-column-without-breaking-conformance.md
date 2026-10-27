@@ -60,10 +60,15 @@ A column the deployment adds needs a default, or the kit's own synthetic rows ar
 - **A derived column that keeps what its session no longer holds**, such as a removed message's
   text, or takes another session's values: Redaction holds fails (`derived-column-stale.mjs`,
   `derived-column-copied.mjs`).
+- **The specification's columns in another order (ClickHouse).** The kit formats a legacy row's
+  line in the deployed table's own column order, so a table whose specification columns are
+  reordered fails Legacy content_sha, whole rows. §4.8 and §8 word the line in this
+  specification's DDL order, so this is the kit's reading, left open as
+  [question 36][q36]: keep `schema/`'s column order, adding columns where you like.
 
 For more, every change the kit's self-test makes to the reference engine or to `schema/`, listed
-in [`conformance/reference/faults.mjs`](../../conformance/reference/faults.mjs), breaks conformance:
-each check names the faults it must catch, and fails against each of them.
+in [`conformance/reference/faults.mjs`](../../conformance/reference/faults.mjs), breaks a check of
+the kit: each check names the faults it must catch, and fails against each of them.
 
 ## Worked: a `tenant` column on both profiles
 
@@ -119,3 +124,4 @@ column in the DDL text instead of by `ALTER`.
 [q26]: ../../conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle
 [q27]: ../../conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle
 [q35]: ../../conformance/SPEC-QUESTIONS.md#columns-a-deployment-adds-beyond-derived-ones
+[q36]: ../../conformance/SPEC-QUESTIONS.md#legacy-lines
