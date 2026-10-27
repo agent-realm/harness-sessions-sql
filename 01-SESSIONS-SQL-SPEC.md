@@ -1,7 +1,7 @@
 # sessions-sql — Specification
 
 **version:** v1
-**status:** the table shapes and semantics of v1, proposed. Under AGENTS.md rule 2, no table or
+**status:** the table shapes and semantics of v1, accepted. Under AGENTS.md rule 2, no table or
 key is normative until a working implementation or a fixture test backs it. The conformance kit's
 fixture tests back every §8 item through its reference engine, on both database profiles.
 memhouse's capture engine is the first production implementation, and these shapes will be
@@ -731,13 +731,13 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
   on PostgreSQL, which do not apply there (§8);
 - every control in the self-test makes its check fail.
 
-**Production implementations.** memhouse's capture engine (0.20) is the first. It has run the
-kit on its ClickHouse database profile (2026-10-27) and does not pass every item yet: Crash-safe,
-Edges outlive statements correctly, Absences replay and Re-derive from the archive fail. Its pass
-is recorded here when it has one. Until then no production implementation has passed the kit: the
-read manifests (§4.1) are proved by the reference engine alone, and the pieces marked (plan) wait
-for a production implementation. Per the empirical-first rule, these shapes are corrected to match
-what it proves out.
+**Production implementations.** memhouse's capture engine is the first. On its ClickHouse database
+profile it passes every §8 item that applies to it except Crash-safe, whose remaining failures are
+the case that [SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
+leaves open: a crash, then a re-run that reads other content. Two parts of Absences replay do not
+apply to it (n/a), because it declares only the vanish policies it uses (§8). No production
+implementation passes every item yet, so the pieces marked (plan) still wait for one. Per the
+empirical-first rule, these shapes are corrected to match what it proves out.
 
 **DDL check, 2026-10-22, on a disposable test VM:**
 - `schema/clickhouse.sql` loads in clickhouse-local 26.11.1, and all 7 tables (6 normative,
