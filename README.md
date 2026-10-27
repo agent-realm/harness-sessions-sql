@@ -1,6 +1,6 @@
 # sessions-sql
 
-**Status: v0 draft.** The spec and both database profiles' DDL are drafted. The DDL loads in both engines. The conformance suite is not written yet.
+**Status: v0 draft.** The spec and both database profiles' DDL are drafted. The DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both profiles, and no implementation has run it yet.
 
 ## What it is
 
@@ -38,7 +38,7 @@ standard of its own, beside two others:
 
 1. **The standard:** [`01-SESSIONS-SQL-SPEC.md`](01-SESSIONS-SQL-SPEC.md): tables, keys, revisions and tombstones, writing and reading, the open points, conformance.
 2. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql).
-3. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, as they will run against a ClickHouse or PostgreSQL target taken from the environment.
+3. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, and how to run them against a ClickHouse or PostgreSQL target taken from the environment.
 
 ## Where next
 

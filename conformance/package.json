@@ -1,0 +1,19 @@
+{
+  "name": "sessions-sql-conformance",
+  "version": "0.1.0",
+  "description": "The conformance kit of sessions-sql: the checks of 01-SESSIONS-SQL-SPEC.md section 8, run against a ClickHouse or PostgreSQL target taken from the environment",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "kit": "node run.mjs",
+    "self-test": "node run.mjs --self-test",
+    "test": "node --test 'test/*.test.mjs'"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
