@@ -1,6 +1,6 @@
 # sessions-sql — Specification
 
-**version:** v1 (proposal, awaiting the maintainer's go)
+**version:** v1
 **status:** the table shapes and semantics of v1, proposed. Under AGENTS.md rule 2, no table or
 key is normative until a working implementation or a fixture test backs it. The conformance kit's
 fixture tests back every §8 item through its reference engine, on both database profiles.
@@ -717,8 +717,8 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
 
 ## 9. Status
 
-**v1, proposed:** it awaits the maintainer's go. It maps the records of
-[sessions-model][sessions-model] v1 as the [sessions][sessions] v1 seam delivers them. The fixtures
+**v1.** It maps the records of [sessions-model][sessions-model] v1.3 as the [sessions][sessions]
+v1.3 seam delivers them, and stays valid under any later v1.x. The fixtures
 are those of the session-adapters package (`packages/session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
 its reviewed golden. A conformance run reads them from a checkout of the package, because a
 published package ships no `fixtures/`.
@@ -731,7 +731,9 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
   on PostgreSQL, which do not apply there (§8);
 - every control in the self-test makes its check fail.
 
-**Production implementations.** memhouse's capture engine (0.20) is the first. Its run of the kit
+**Production implementations.** memhouse's capture engine (0.20) is the first. It has run the
+kit on its ClickHouse database profile (2026-10-27) and does not pass every item yet: Crash-safe,
+Edges outlive statements correctly, Absences replay and Re-derive from the archive fail. Its pass
 is recorded here when it has one. Until then no production implementation has passed the kit: the
 read manifests (§4.1) are proved by the reference engine alone, and the pieces marked (plan) wait
 for a production implementation. Per the empirical-first rule, these shapes are corrected to match

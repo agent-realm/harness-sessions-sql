@@ -1,6 +1,6 @@
 # sessions-sql
 
-**Status: v1, proposed** (awaiting the maintainer's go). The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles, and no production implementation has run it yet.
+**Status: v1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run it and does not pass every item yet.
 
 ## What it is
 
