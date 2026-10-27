@@ -32,7 +32,7 @@ session whole, its messages in order, its tool calls with their results, and its
     `output_includes_reasoning` say. The records carry Anthropic-style counts (cached input beside
     `input`, reasoning inside `output`), and set both flags. Where a flag is null, §4.4 does not
     say what the total is; the example's SQL leaves it null (unknown), a choice of its own while
-    that question is open.
+    [that question](../../conformance/SPEC-QUESTIONS.md#usage-totals) (34) is open.
 
 Every row is written at `rev` 1 with a plain insert into empty tables, through the kit's
 `insertRows`: a first write. Later versions follow the write rule that

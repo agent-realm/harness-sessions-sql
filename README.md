@@ -37,15 +37,17 @@ standard of its own, beside two others:
 ## Start here
 
 1. **The standard:** [`01-SESSIONS-SQL-SPEC.md`](01-SESSIONS-SQL-SPEC.md): tables, keys, revisions and tombstones, writing and reading, the open points, conformance.
-2. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql).
-3. **The examples:** [`examples/README.md`](examples/README.md): five runnable examples, from one session written by hand in SQL to the reference engine checked by the conformance kit.
-4. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, and how to run them against a ClickHouse or PostgreSQL target taken from the environment.
+2. **The tutorial:** [From an empty database to a conforming store](docs/tutorials/from-empty-database-to-conforming-store.md): one path through the examples, from loading the DDL to the conformance kit's verdict.
+3. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql).
+4. **The examples:** [`examples/README.md`](examples/README.md): five runnable examples, from one session written by hand in SQL to the reference engine checked by the conformance kit.
+5. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, and how to run them against a ClickHouse or PostgreSQL target taken from the environment.
 
 ## Where next
 
 - [`examples/`](examples/README.md): run them all with `npm test` in `examples/`, against a disposable target.
-- [`docs/`](docs/README.md): the documentation index.
-- [`AGENTS.md`](AGENTS.md): conventions for agents and humans working on this repo.
+- [`docs/`](docs/README.md): the documentation index, with the guides: running the kit against your engine, reading the current state, adding a column.
+- [`AGENTS.md`](AGENTS.md): conventions for agents and humans working on this repo, and how to install and deploy.
+- [`CHANGELOG.md`](CHANGELOG.md): what each version holds.
 
 ## License
 

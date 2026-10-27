@@ -1,13 +1,14 @@
 # Questions for the specification
 
-Points where `01-SESSIONS-SQL-SPEC.md` (v0) was ambiguous, or where a §8 item could not be checked
-as it was written. For each: what the kit or the reference engine did, so nothing here was
+Points where `01-SESSIONS-SQL-SPEC.md` was ambiguous, first in its v0 and now in v1, or where a §8
+item could not be checked as it was written. For each: what the kit or the reference engine did, so nothing here was
 invented silently, and the question the specification should settle.
 
-**Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17 and 29; 6 and
-18 belong to the session-adapters package. 19 to 28, 30 and 31 are open: v1 does not settle them, 27
-and 28 came from the kit's last review, 29 and 30 from v1's derived columns (§3), and 31 from
-the first production engine's inferred edges. Each answered item ends with its answer and the section that now
+**Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17, 29 and 30 (29 and 30
+came from v1's derived columns, §3); 6 and 18 belong to the session-adapters package. 19 to 28
+and 31 to 36 are open, as v1 does not settle them: 27 and 28 came from the kit's last review, 31
+from the first production engine's inferred edges, and 32 to 36 from the review of the examples
+(`examples/`) and the docs (`docs/`). Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so
 the answers can be read against them.
 
@@ -37,6 +38,11 @@ the answers can be read against them.
 | 29 | §3 Derived columns, §8 Redaction holds | Redaction holds judges a column the deployment adds against the records of the row's session; a second pass removes a message that holds a planted value; two faults and three test engines |
 | 30 | §2 principles 1 and 3, §3 Derived columns | none: the kit already judges history rows against the session's records, current or removed; forgotten content is not checked until an engine honours forget notices |
 | 31 | open (v1.x) | none |
+| 32 | open | none (example 01 shows the `HAVING` read) |
+| 33 | open | none |
+| 34 | open | none (example 03 leaves such a total null) |
+| 35 | open | none (the kit judges such a column as it judges a derived one) |
+| 36 | open | none (the kit formats the line in the deployed table's column order) |
 
 ## Checks that cannot run as §8 words them
 
@@ -406,3 +412,87 @@ the answers can be read against them.
 
     *Open:* for the next v1.x.
 
+## Reading the current state
+
+32. **Where the filter goes in an `argMax` read (§3, §6).** §3 reads the current state "with
+    `FINAL`, or with `argMax(…, rev)`, filtering `is_deleted = 0` and `removed = 0`", and §6 names
+    the same filters, but neither says where the filter goes. With `argMax`, only a filter on each
+    key's latest version gives the current state: `HAVING argMax(is_deleted, rev) = 0 AND
+    argMax(removed, rev) = 0`. The same filter in a `WHERE` before `GROUP BY` drops the removed
+    version (or tombstone) first, so `argMax` picks an older version of a removed key as if it
+    were current, for as long as that older version has not merged away. Principle 4 implies the
+    `HAVING` reading, since a lower `rev` never replaces a higher one, but the text invites the
+    other. *The examples:* example 01 reads with `HAVING`, and compares the two placements on an
+    inline set of a key's two versions, so that no merge changes the result. *Inferred, not
+    verified:* a `FINAL` read whose filter is moved into `PREWHERE` may have the same trap.
+    *Question:* should §3 say that an `argMax` read filters the latest version, in `HAVING`, and
+    where a `FINAL` read's filter applies?
+
+    *Open:* v1 does not settle it.
+
+## Removed versions
+
+33. **`ingested_at` of a removed version (§2 principle 3).** A removed version is "a full copy of
+    its last row, at a higher `rev`". Read literally, the copy keeps the last row's `ingested_at`.
+    The column's default (`now64(3)` in ClickHouse, `now()` in PostgreSQL) stamps the time of the
+    write instead, and the reference engine leaves `ingested_at` out of every write, so its removed
+    versions take the new time. `writer` is settled: it is `MATERIALIZED currentUser()` (a column
+    default in PostgreSQL), stamped at write time by principle 5 and never in a key. No §8 item
+    depends on `ingested_at`: Removed equals not live compares a removed version with the row
+    before it column by column, leaving out `rev`, `removed`, `is_deleted`, `ingested_at` and
+    `writer`. *Question:* does a removed version keep its last row's `ingested_at`, or record when
+    the removal was written?
+
+    *Open:* v1 does not settle it.
+
+## Usage totals
+
+34. **A total when a flag is null (§4.4).** §4.4 gives a reader's total input as `input`, plus
+    `cache_read + cache_write` where `input_includes_cache` is false, plus `tool_prompt` where it is
+    not null, and its total output as `output`, plus `reasoning` where `output_includes_reasoning`
+    is false. Read literally, a null `input_includes_cache` is not false, so the total input is
+    `input` alone. But §4.4 also says a null flag means the adapter has nothing that establishes
+    the split, and sessions-model §2.4 defines the totals only for a true and a false flag. The
+    flags are null for most harnesses (sessions-model §2.4's table). Also unstated: the total input
+    when `input_includes_cache` is false and `cache_read` or `cache_write` is null, and the total
+    output when `output_includes_reasoning` is false and `reasoning` is null. *The examples:*
+    example 03 leaves the total null (unknown) in these cases, a choice of its own; its records set
+    both flags. *Question:* is a total with a null flag `input` (or `output`) alone, unknown, or
+    something a reader must not compute; and is a null counter under a false flag zero or unknown?
+
+    *Open:* v1 does not settle it.
+
+## Columns a deployment adds, beyond derived ones
+
+35. **A column that is not derived (§3, §4.8, §8 Redaction holds).** §3's Derived columns lets a
+    deployment add derived columns, which hold "only values taken from that session's own records"
+    and add "no data those records do not have". The specification also expects columns that are
+    not derived: §4.8 leaves "any column a deployment adds" out of a legacy row's line, and §3 keeps
+    a consumer's first-seen time "in a column of its own", a value no record holds. A tenant name is
+    another. But §8 Redaction holds reads a column a deployment adds as "(§3, derived columns)", and
+    nothing else says what such a column may hold or where it may not appear. *The kit* judges every
+    column a deployment adds as it judges a derived one: Redaction holds lets it hold a planted value
+    only where a record of the row's session holds it, and a column holding the deployment's own
+    value, such as `tenant`, passes (the test engine `added-column.mjs`; `docs/guides/` relies on
+    this reading for its worked `tenant` column). *Question:* may a deployment add columns that are
+    not derived, and under which rules: out of every key and `content_sha`, as a derived column is,
+    and holding no other session's values and no redacted value?
+
+    *Open:* v1 does not settle it.
+
+## Legacy lines
+
+36. **The column order of a legacy line (§4.8, §8 Legacy content_sha, whole rows).** §4.8 defines a
+    legacy row's line as "the row's columns, in this specification's DDL order for that table", and
+    §8's database half loads a vector's fields "into the deployed table" to "format back in this
+    specification's DDL order into that line". Nothing requires the deployed table itself to keep
+    that order. *The kit* formats the line in the deployed table's own column order, the columns a
+    deployment adds left out, so a table whose specification columns sit in another order gives
+    another line and fails the item; its control `ddl:reorder-columns` (two columns of `sessions`
+    and two of `session_parts` swapped) is one such table. Read as §8 words it, a deployment whose
+    legacy SQL names the columns in this specification's DDL order would conform with reordered
+    columns, and the kit fails it. *Question:* is the line formatted in this specification's DDL
+    order whatever the deployed table's column order, or must a deployment that converts legacy
+    rows keep that order in its tables?
+
+    *Open:* v1 does not settle it.

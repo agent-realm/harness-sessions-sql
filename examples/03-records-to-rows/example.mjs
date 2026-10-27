@@ -104,7 +104,8 @@ await runExample({
 
       // The totals of spec §4.4: the stored counts, added up as the two flags say. Where a flag is
       // null, §4.4 does not say what the total is: this SQL leaves it null (unknown), a choice of
-      // this example's own while that question is open. This example's records set both flags.
+      // this example's own while that question is open (conformance/SPEC-QUESTIONS.md, question
+      // 34). This example's records set both flags.
       console.log('usage, with the totals of spec §4.4:');
       console.log(table(await db.query(`
         SELECT usage_id, input, cache_read, cache_write, output,
