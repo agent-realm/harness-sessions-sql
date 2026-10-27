@@ -11,6 +11,8 @@ working on this repo.
   drafted in `schema/`.
 - **A conformance kit** (`conformance/`) that proves an implementation of the mapping, run against
   a ClickHouse or PostgreSQL target taken from the environment.
+- **Examples** (`examples/`): five runnable examples, from one session written by hand in SQL to
+  the reference engine checked by the kit, each README holding the output it prints.
 
 **Status: v1**; begun 2026-10-22.
 
