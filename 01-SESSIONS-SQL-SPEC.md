@@ -8,8 +8,8 @@ memhouse's capture engine is the first production implementation, and these shap
 reconciled against it (§9).
 **provides:** the `sessions-sql` mapping: how session records are kept in SQL.
 **consumes:**
-[`sessions-model`][sessions-model] v1 (the records) and
-[`sessions`][sessions] v1 (the seam). Its ClickHouse database profile uses common conventions:
+[`sessions-model`][sessions-model] v1.3 (the records) and
+[`sessions`][sessions] v1.3 (the seam), or any later v1.x. Its ClickHouse database profile uses common conventions:
 ReplacingMergeTree versioned by `rev` with an `is_deleted` flag, `DateTime64` in UTC, and a
 server-stamped `writer` column.
 
