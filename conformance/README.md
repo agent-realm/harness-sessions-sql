@@ -168,7 +168,7 @@ parts, one per case), and each part is its own row:
 | 18 | Redaction holds | engine | on the three sentinel fixtures, OpenCode's first user message (its text holds a planted value) deleted in a second pass: no row holds a planted value in the specification's columns (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6); a column the deployment adds (§3, derived columns) holds one only where a current record of the row's session holds it (in a removed version, the archive or the cursor: a record of the session, current or removed); and the values redacted on declared paths are in no table |
 | 19 | Database profile parity | engine | the same envelopes into ClickHouse and PostgreSQL give the same current `(identity, content_sha[, message_content_sha])` in every entity table, `legacy` rows left out (runs when both profiles are in the run) |
 
-Each check runs its item as §8 of the specification's v1 proposal words it, against the v1 DDL in
+Each check runs its item as §8 of the specification's v1 words it, against the v1 DDL in
 [`schema/`](../schema/). [`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md) keeps the questions the kit
 raised against v0, each with the answer v1 gives, and the ones still open.
 

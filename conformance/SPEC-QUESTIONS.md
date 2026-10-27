@@ -4,7 +4,7 @@ Points where `01-SESSIONS-SQL-SPEC.md` (v0) was ambiguous, or where a §8 item c
 as it was written. For each: what the kit or the reference engine did, so nothing here was
 invented silently, and the question the specification should settle.
 
-**Status against the v1 proposal of the specification.** v1 answers 1 to 5, 7 to 17 and 29; 6 and
+**Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17 and 29; 6 and
 18 belong to the session-adapters package. 19 to 28 and 30 are open: v1 does not settle them, 27
 and 28 came from the kit's last review, and 29 and 30 from v1's derived columns (§3). Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so

@@ -65,7 +65,7 @@ export const DDL_FAULTS = {
       : once(t, /exit_code(\s+)integer,/, 'exit_code$1integer NOT NULL DEFAULT 0,', 'counters-not-null');
   },
 
-  // adapter_ver back to an integer column, as before the v1 proposal: a version string as the
+  // adapter_ver back to an integer column, as before v1: a version string as the
   // adapter states it (0.2.0) no longer fits.
   'adapter-ver-integer': (t, p) => (p === 'clickhouse'
     ? once(t, /\n(\s*)adapter_ver(\s+)LowCardinality\(String\),/g, '\n$1adapter_ver$2UInt32,', 'adapter-ver-integer')
