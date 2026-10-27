@@ -103,7 +103,7 @@ export const ENGINE_FAULT_PROFILES = {
 export const FAULT_NOTES = {
   'ddl:drop-key-column': "session_units' key loses `chunk`",
   'ddl:registry-enum': 'harness, ts_source and enc constrained to the values known today',
-  'ddl:no-host-check': 'no host/v0 form check',
+  'ddl:no-host-check': 'no host form check',
   'ddl:partition-by-time': 'session_parts partitioned by month',
   'ddl:ts-not-null': '`ts` not Nullable',
   'ddl:counters-not-null': 'usage counters and exit_code not Nullable, default 0',
