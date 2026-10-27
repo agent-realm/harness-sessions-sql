@@ -5,7 +5,8 @@
 key is normative until a working implementation or a fixture test backs it. The conformance kit's
 fixture tests back every §8 item through its reference engine, on both database profiles.
 memhouse's capture engine is the first production implementation, and these shapes will be
-reconciled against it (§9).
+reconciled against it (§9): under AGENTS.md rule 5, a correction that only adds lands in a v1.x, and
+any other in v2.
 **provides:** the `sessions-sql` mapping: how session records are kept in SQL.
 **consumes:**
 [`sessions-model`][sessions-model] v1.3 (the records) and
@@ -731,14 +732,20 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
   on PostgreSQL, which do not apply there (§8);
 - every control in the self-test makes its check fail.
 
-**Production implementations.** memhouse's capture engine is the first, in its 0.20 line, still in
-development. On its ClickHouse database profile it passes every §8 item that applies to it except
-Crash-safe, whose remaining failures are the case that
-[SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
-leaves open: a crash, then a re-run that reads other content. Two parts of Absences replay do not
-apply to it (n/a), because it declares only the vanish policies it uses (§8). No production
-implementation passes every item yet, so the pieces marked (plan) still wait for one. Per the
-empirical-first rule, these shapes are corrected to match what it proves out.
+**Production implementations.** memhouse's capture engine is the first. On 2026-10-27, with the kit
+of sessions-sql 96dcb3f (its kit code is unchanged since), memhouse's 0.20 line, still in
+development, on ClickHouse 26.8:
+- every §8 item that applies to it and was run passes, except Crash-safe, whose remaining failures
+  are the case that
+  [SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
+  leaves open: a crash, then a re-run that reads other content;
+- two parts of Absences replay do not apply to it (n/a), because it declares only the vanish
+  policies it uses (§8);
+- Database profile parity was not run: memhouse has a ClickHouse database profile only.
+
+No production implementation passes every item yet, so the pieces marked (plan) still wait for one.
+Per the empirical-first rule, these shapes are corrected to match what it proves out: under
+AGENTS.md rule 5, a correction that only adds lands in a v1.x, and any other in v2.
 
 **DDL check, 2026-10-22, on a disposable test VM:**
 - `schema/clickhouse.sql` loads in clickhouse-local 26.11.1, and all 7 tables (6 normative,

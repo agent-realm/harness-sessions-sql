@@ -11,13 +11,8 @@ the link reference `[1.0.0]: https://github.com/agent-realm/sessions-sql/release
 place of `[Unreleased]` below.
 
 **Status.** The specification is v1, accepted. It consumes sessions-model v1.3 (the records) and
-sessions v1.3 (the seam), or any later v1.x. The reference engine passes every §8 item on both
-database profiles (the two legacy items do not apply to PostgreSQL). memhouse, the first production
-implementation (its 0.20 line, in development), passes every item that applies to it except Crash-safe, whose remaining failures
-are the case
-[SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
-leaves open; two parts of Absences replay do not apply to it, as it declares only the vanish
-policies it uses ([§9](01-SESSIONS-SQL-SPEC.md#9-status)).
+sessions v1.3 (the seam), or any later v1.x. Its conformance state, that of the reference engine and
+of memhouse, the first production implementation, is in [§9](01-SESSIONS-SQL-SPEC.md#9-status).
 
 ### Added
 
@@ -37,6 +32,6 @@ policies it uses ([§9](01-SESSIONS-SQL-SPEC.md#9-status)).
   a column without breaking conformance.
 - **Open questions**, [`conformance/SPEC-QUESTIONS.md`](conformance/SPEC-QUESTIONS.md): the points
   the kit and the reviews raised against the specification, each with what the kit does about it;
-  19 to 28 and 31 to 35 are open in v1.
+  19 to 28 and 31 to 36 are open in v1.
 
 [Unreleased]: https://github.com/agent-realm/sessions-sql/commits/main
