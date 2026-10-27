@@ -1,6 +1,6 @@
--- sessions-sql v0 (draft): the normative ClickHouse profile.
+-- sessions-sql v1: the normative ClickHouse database profile.
 -- Spec: 01-SESSIONS-SQL-SPEC.md. Records: sessions-model v1 (contracts/sessions-model.md).
--- Status: loads in clickhouse-local 26.11.1 with the sort keys of spec section 3 (section 9).
+-- Status: loads in ClickHouse 26.8 with the sort keys of spec section 3 (section 9).
 --
 -- Conventions:
 -- * The identity of every entity table is its whole ORDER BY (ReplacingMergeTree replaces on
@@ -30,12 +30,12 @@ CREATE TABLE session_units
     chunk         UInt16 DEFAULT 0,                 -- a unit split into chunks (large units)
     sha256        FixedString(64),                  -- hex, of the bytes as emitted (after redaction)
     enc           LowCardinality(String),           -- a registry (spec §2, principle 7): utf8 | b64 | row-json | rows-json | pb-json | manifest (unit_key '', §4.1) | …
-    orig_sha256   FixedString(64) DEFAULT '',       -- pb-json: sha256 of the original protobuf bytes
+    orig_sha256   Nullable(FixedString(64)),        -- sha256 of the original bytes (spec §4.1); null when the unit has none
     redacted      Bool DEFAULT false,
-    continuity    LowCardinality(String),           -- appended | delta | reset | snapshot
+    continuity    LowCardinality(String),           -- sessions §3: appended | delta | reset | snapshot | unchanged (a source_gone manifest: reset)
     raw           String CODEC(ZSTD(3)),
     adapter       LowCardinality(String),
-    adapter_ver   UInt32,
+    adapter_ver   LowCardinality(String),           -- the version string the adapter states (0.2.0), as given
     captured_at   DateTime64(3, 'UTC') DEFAULT now64(3),
     writer        String MATERIALIZED currentUser()
 )
@@ -59,7 +59,7 @@ CREATE TABLE session_sources
     state              String DEFAULT '' CODEC(ZSTD(1)),  -- the derive state (opaque)
     state_ver          UInt32,
     adapter            LowCardinality(String),
-    adapter_ver        UInt32,
+    adapter_ver        LowCardinality(String),
     committed_at       DateTime64(3, 'UTC') DEFAULT now64(3),
     ver                UInt64 MATERIALIZED (toUInt64(generation) * 1099511627776) + progress,
     writer             String MATERIALIZED currentUser()
@@ -97,7 +97,7 @@ CREATE TABLE sessions
     setup            Nullable(String),                 -- canonical JSON of sessions-model §2.1 setup; null unless recorded
     content_sha      FixedString(64),
     adapter          LowCardinality(String),
-    adapter_ver      UInt32,
+    adapter_ver      LowCardinality(String),
     model_version    LowCardinality(String),
     rev              UInt64,
     is_deleted       UInt8 DEFAULT 0,
@@ -173,7 +173,7 @@ CREATE TABLE session_parts
     part_state           LowCardinality(String) DEFAULT '',  -- the part's own state, '' = its message's
     content_sha          FixedString(64),
     adapter              LowCardinality(String),
-    adapter_ver          UInt32,
+    adapter_ver          LowCardinality(String),
     model_version        LowCardinality(String),
     rev                  UInt64,
     is_deleted           UInt8 DEFAULT 0,
@@ -209,7 +209,7 @@ CREATE TABLE session_usage
     model          LowCardinality(String) DEFAULT '',
     content_sha    FixedString(64),
     adapter        LowCardinality(String),
-    adapter_ver    UInt32,
+    adapter_ver    LowCardinality(String),
     model_version  LowCardinality(String),
     rev            UInt64,
     is_deleted     UInt8 DEFAULT 0,
@@ -256,13 +256,13 @@ CREATE TABLE session_links
     ids_preserved       Nullable(Bool),
     marked              Nullable(Bool),
     usage_copied        Nullable(Bool),
-    child_stored        Bool DEFAULT true,
+    child_stored        Nullable(Bool),             -- null: unknown (a statement that does not say)
     evidence            LowCardinality(String) DEFAULT 'explicit',  -- explicit | inferred (inferred: engine only)
     verified            Nullable(Bool),             -- engine only
     statements          Array(Tuple(host String, harness String, harness_path String, session_id String, incarnation String)),  -- engine only
     content_sha         FixedString(64),
     adapter             LowCardinality(String),
-    adapter_ver         UInt32,
+    adapter_ver         LowCardinality(String),
     model_version       LowCardinality(String),
     rev                 UInt64,
     is_deleted          UInt8 DEFAULT 0,
@@ -293,7 +293,7 @@ CREATE TABLE session_lifecycle
     evidence        LowCardinality(String) DEFAULT 'explicit',
     content_sha     FixedString(64),
     adapter         LowCardinality(String),
-    adapter_ver     UInt32,
+    adapter_ver     LowCardinality(String),
     model_version   LowCardinality(String),
     rev             UInt64,
     is_deleted      UInt8 DEFAULT 0,

@@ -12,7 +12,7 @@ working on this repo.
 - **A conformance kit** (`conformance/`) that proves an implementation of the mapping, run against
   a ClickHouse or PostgreSQL target taken from the environment.
 
-**Status: v0 draft,** begun 2026-10-22.
+**Status: v1**; begun 2026-10-22.
 
 ## The dependency rule
 

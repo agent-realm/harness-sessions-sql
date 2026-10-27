@@ -1,4 +1,4 @@
--- sessions-sql v0 (draft): the PostgreSQL profile, over the same logical keys as clickhouse.sql.
+-- sessions-sql v1: the PostgreSQL database profile, over the same logical keys as clickhouse.sql.
 -- Spec: 01-SESSIONS-SQL-SPEC.md, section 3.
 -- Status: loads in PostgreSQL 16 with the primary keys of spec section 3 (section 9).
 --
@@ -24,12 +24,12 @@ CREATE TABLE session_units (
     chunk         integer     NOT NULL DEFAULT 0,
     sha256        char(64)    NOT NULL,
     enc           text        NOT NULL,              -- a registry (spec §2, principle 7): utf8 | b64 | row-json | rows-json | pb-json | manifest (unit_key '', §4.1) | …
-    orig_sha256   char(64),
+    orig_sha256   char(64),                          -- sha256 of the original bytes (spec §4.1); null when the unit has none
     redacted      boolean     NOT NULL DEFAULT false,
-    continuity    text        NOT NULL,
+    continuity    text        NOT NULL,              -- sessions §3: appended | delta | reset | snapshot | unchanged (a source_gone manifest: reset)
     raw           text        NOT NULL,
     adapter       text        NOT NULL,
-    adapter_ver   integer     NOT NULL,
+    adapter_ver   text        NOT NULL,              -- the version string the adapter states (0.2.0), as given
     captured_at   timestamptz NOT NULL DEFAULT now(),
     writer        text        NOT NULL DEFAULT current_user,
     PRIMARY KEY (host, harness, harness_path, session_id, incarnation, source_key, generation, unit_key, chunk, sha256)
@@ -51,7 +51,7 @@ CREATE TABLE session_sources (
     state              text    NOT NULL DEFAULT '',
     state_ver          integer NOT NULL,
     adapter            text    NOT NULL,
-    adapter_ver        integer NOT NULL,
+    adapter_ver        text    NOT NULL,
     committed_at       timestamptz NOT NULL DEFAULT now(),
     writer             text    NOT NULL DEFAULT current_user,
     PRIMARY KEY (host, harness, harness_path, session_id, incarnation, source_key)
@@ -84,7 +84,7 @@ CREATE TABLE sessions (
     setup            jsonb,                             -- sessions-model §2.1 setup; null unless recorded
     content_sha      char(64) NOT NULL,
     adapter          text     NOT NULL,
-    adapter_ver      integer  NOT NULL,
+    adapter_ver      text     NOT NULL,
     model_version    text     NOT NULL,
     rev              numeric(20,0) NOT NULL,           -- UInt64 range
     is_deleted       boolean  NOT NULL DEFAULT false,
@@ -155,7 +155,7 @@ CREATE TABLE session_parts (
     part_state           text NOT NULL DEFAULT '',  -- the part's own state, '' = its message's
     content_sha          char(64) NOT NULL,
     adapter              text NOT NULL,
-    adapter_ver          integer NOT NULL,
+    adapter_ver          text NOT NULL,
     model_version        text NOT NULL,
     rev                  numeric(20,0) NOT NULL,
     is_deleted           boolean NOT NULL DEFAULT false,
@@ -187,7 +187,7 @@ CREATE TABLE session_usage (
     model          text NOT NULL DEFAULT '',
     content_sha    char(64) NOT NULL,
     adapter        text NOT NULL,
-    adapter_ver    integer NOT NULL,
+    adapter_ver    text NOT NULL,
     model_version  text NOT NULL,
     rev            numeric(20,0) NOT NULL,
     is_deleted     boolean NOT NULL DEFAULT false,
@@ -227,13 +227,13 @@ CREATE TABLE session_links (
     ids_preserved       boolean,
     marked              boolean,
     usage_copied        boolean,
-    child_stored        boolean NOT NULL DEFAULT true,
+    child_stored        boolean,                     -- null: unknown (a statement that does not say)
     evidence            text NOT NULL DEFAULT 'explicit',
     verified            boolean,
     statements          jsonb NOT NULL DEFAULT '[]',
     content_sha         char(64) NOT NULL,
     adapter             text NOT NULL,
-    adapter_ver         integer NOT NULL,
+    adapter_ver         text NOT NULL,
     model_version       text NOT NULL,
     rev                 numeric(20,0) NOT NULL,
     is_deleted          boolean NOT NULL DEFAULT false,
@@ -260,7 +260,7 @@ CREATE TABLE session_lifecycle (
     evidence        text NOT NULL DEFAULT 'explicit',
     content_sha     char(64) NOT NULL,
     adapter         text NOT NULL,
-    adapter_ver     integer NOT NULL,
+    adapter_ver     text NOT NULL,
     model_version   text NOT NULL,
     rev             numeric(20,0) NOT NULL,
     is_deleted      boolean NOT NULL DEFAULT false,
