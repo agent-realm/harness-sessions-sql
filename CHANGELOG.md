@@ -4,11 +4,9 @@ All notable changes to sessions-sql are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers match the
 specification's: the first release, 1.0.0, is its v1.
 
-## [Unreleased]
+## [1.0.0] - 2026-10-27
 
-The first release, 1.0.0. When it is tagged, this heading becomes `## [1.0.0] - YYYY-MM-DD`, with
-the link reference `[1.0.0]: https://github.com/agent-realm/sessions-sql/releases/tag/v1.0.0` in
-place of `[Unreleased]` below.
+The first release.
 
 **Status.** The specification is v1, accepted. It consumes sessions-model v1.3 (the records) and
 sessions v1.3 (the seam), or any later v1.x. Its conformance state, that of the reference engine and
@@ -34,4 +32,4 @@ of memhouse, the first production implementation, is in [§9](01-SESSIONS-SQL-SP
   the kit and the reviews raised against the specification, each with what the kit does about it;
   19 to 28 and 31 to 36 are open in v1.
 
-[Unreleased]: https://github.com/agent-realm/sessions-sql/commits/main
+[1.0.0]: https://github.com/agent-realm/sessions-sql/releases/tag/v1.0.0
