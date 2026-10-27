@@ -25,7 +25,7 @@ Node.js 24. One dependency, `pg`; ClickHouse is spoken over its HTTP interface w
 | `SSQL_PG_URL` | a PostgreSQL connection URL |
 | `SSQL_PREFIX` | the deployment prefix of every table (spec §3, physical names); default `conf_` |
 | `SSQL_ENGINE` | the engine under test, a module path or package name; default the [reference engine](reference/engine.mjs) |
-| `SSQL_ADAPTERS` | the session-adapters package (`@agent-realm/session-adapters`, `packages/session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to it, or a package name, until it is on npm |
+| `SSQL_ADAPTERS` | the session-adapters package (`@agent-realm/session-adapters`, `packages/session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to a checkout of it, pinned to the package's release tag once it has one, or a package name |
 | `SSQL_TIMEOUT_MS` | how long one database request may take; default 300000 |
 
 A package name in `SSQL_ENGINE` or `SSQL_ADAPTERS` resolves from the kit's own folder (its
@@ -37,7 +37,8 @@ password it was given taken out first.
 
 The run checks the profiles that have a target (or the one `--profile` names); a profile with no
 target is not run, and no target at all is a usage error. The fixture-based checks need the
-package's `fixtures/` folder, which a checkout has; without it they are skipped, with the reason.
+package's `fixtures/` folder, which a checkout has and a published package does not ship; without
+it they are skipped, with the reason.
 
 **Point it only at a disposable deployment.** Every check creates a namespace of its own
 (`ssql_conf_<run>_<n>`), makes the deployment's tables in it under the prefix (below: the engine's
@@ -102,8 +103,8 @@ firewall.
 ## The input: envelopes
 
 Engines are fed **envelopes**, made by the session adapters from the package's own synthetic
-fixtures ([`envelopes.mjs`](envelopes.mjs)). An envelope is one read of one source as the
-`sessions` seam delivers it:
+fixtures ([`envelopes.mjs`](envelopes.mjs)). An envelope, as spec §8 defines it, is one read of
+one source as the `sessions` seam delivers it:
 
 ```js
 { store: {host, harness, harness_path}, session: {session_id, incarnation},
@@ -156,18 +157,19 @@ Each check has a **database** part, an **engine** part, or both, and each part i
 | 8 | Host form | database | in every table with a key `host`: host/v0, `r-` and `s-` values accepted (`s-`: the claude.ai known answer, sessions-model v1.3; not run yet); a hostname, uppercase hex, 31 or 33 hex digits, 32 with a prefix or a suffix, `r-` with 31 or 33, an undefined prefix (`t-`), `s-` with uppercase hex or 31 digits, and `''` rejected; a `legacy` entity row exempt; the link reference hosts alike |
 | 9 | No time partition | database, engine | no entity table has a time partition key, every `ts` of a §3 table is Nullable (a consumer's own tables left alone), and Zed's null `ts` values, on messages and lifecycle records, are stored null |
 | 10 | Units only | engine | every unit (its chunks joined, if several) equals a unit a read emitted (a cut last line, held back by `read`, never lands); every row with `unit_key ''` is a manifest of §4.1's shape that records its read; every adapter-owned record is one the adapter derived, each row with the shas §4 gives it (a part row: the sha of the part as emitted) |
-| 11 | Legacy content_sha, line format | engine | each §4.8 known-answer vector gives its line and its sha through the engine's legacy SQL (ClickHouse; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
-| 12 | Legacy content_sha, whole rows | database, engine | each §4.8 full-row vector, loaded by column name into the deployed table, formats back in DDL order into its line and its sha, a column the deployment adds left out of the line (§4.8): the database part through §4.8's own expression (the DDL), the engine part through the engine's legacy SQL, which counts in the verdict even when the database part is a self-check (ClickHouse; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
+| 11 | Legacy content_sha, line format | engine | each §4.8 known-answer vector gives its line and its sha through the engine's legacy SQL (a ClickHouse database profile item; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
+| 12 | Legacy content_sha, whole rows | database, engine | the database half: each §4.8 full-row vector, loaded by column name into the deployed table, formats back in DDL order into its line and its sha, a column the deployment adds left out of the line (§4.8): the database part through §4.8's own expression (the DDL), the engine part through the engine's legacy SQL, which counts in the verdict even when the database part is a self-check. The conversion half is the implementation's own known-answer tests, which its conformance report names (a ClickHouse database profile item; n/a on PostgreSQL; skipped for an engine with no `legacySha`) |
 | 13 | Two hosts, two sessions | engine | one harness store read under two hosts gives every session under both, two session keys, each with all its records in every entity table |
-| 14 | Absences replay | engine | for the four absences (a source reset to empty, a vanished source kept, one removed, a delta's gone keys): after each live pass, the records against the contract and the kit's fold of the archive against the reads; every manifest against §4.1; then the archive alone, copied and replayed, gives the live namespace's rows, removed versions included |
-| 15 | No-op manifests | engine | the archive replayed with and without its no-op manifests (left out by their whole identity) gives the same state |
-| 16 | Re-derive from the archive | engine | a replay with the kit's bumped adapters (next patch version, every usage record re-keyed) rewrites every record it produces at a higher `rev`, and physically deletes exactly the records it no longer produces |
-| 17 | Null is unknown | database, engine | null counters, flags, `exit_code`, `output_ref_bytes` and `output_len` read back null, and a part's own source and state survive beside its message's; then every such field of the broad scenario equals what the adapter emitted, and a tool result whose newer version has no output reference keeps none |
+| 14 | Absences replay | engine | for the four absences (a source reset to empty, a vanished source kept, one removed, a delta's gone keys): after each live pass, the records against the contract and the kit's fold of the archive against the reads; every manifest against §4.1; then the archive alone, copied and replayed, gives the live namespace's adapter-owned rows, removed versions included, and its current edges |
+| 15 | No-op manifests | engine | the archive replayed with and without its no-op manifests (those of reads that change nothing in the fold, §4.1; left out by their whole identity) gives the same state |
+| 16 | Re-derive from the archive | engine | a replay with the kit's bumped adapters (next patch version, every usage record re-keyed) rewrites every record it produces at a higher `rev`, each row carrying the new `adapter_ver` exactly as the adapter states it, and physically deletes exactly the records it no longer produces |
+| 17 | Null is unknown | database, engine | null counters, flags, `exit_code`, `output_ref_bytes`, `output_len`, `child_stored` and `orig_sha256` read back null, and a part's own source and state survive beside its message's; then every such field of the broad scenario equals what the adapter emitted, every statement's `child_stored` included, every unit's `orig_sha256` is the unit's own or null, and a tool result whose newer version has no output reference keeps none |
 | 18 | Redaction holds | engine | on the three sentinel fixtures, no row holds a planted value (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6), and the values redacted on declared paths are in no table |
 | 19 | Database profile parity | engine | the same envelopes into ClickHouse and PostgreSQL give the same current `(identity, content_sha[, message_content_sha])` in every entity table, `legacy` rows left out (runs when both profiles are in the run) |
 
-Where §8 cannot be checked as it is written, the check says what it checks instead, and
-[`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md) asks the specification to settle it.
+Each check runs its item as §8 of the specification's v1 proposal words it, against the v1 DDL in
+[`schema/`](../schema/). [`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md) keeps the questions the kit
+raised against v0, each with the answer v1 gives, and the ones still open.
 
 ### Positive controls
 
@@ -179,11 +181,13 @@ make it fail:
   generation, the cursor advancing before the entity writes, a crash point ignored, no removed
   versions, a removed version that rewrites its row, a null `ts` filled, no manifests or manifests
   only the engine's replay reads, a part sha computed without its null members, a chunk lost, a
-  PostgreSQL upsert that keeps a column the new version lost, and so on);
+  PostgreSQL upsert that keeps a column the new version lost, `adapter_ver` stored as an integer
+  encoding, a null `child_stored` written as true, a missing `orig_sha256` written as `''`, and so
+  on);
 - **DDL faults** are a faulty implementation DDL, supplied through the reference engine's
   `createTables` as any engine's would be: a key column dropped, a registry turned into a closed
-  list, the host check removed or unanchored, a time partition, a non-Nullable `ts` or counter, two
-  columns swapped.
+  list, the host check removed or unanchored, a time partition, a non-Nullable `ts` or counter, an
+  integer `adapter_ver`, a non-Nullable `child_stored` or `orig_sha256`, two columns swapped.
 
 The list, with what each breaks, is [`reference/faults.mjs`](reference/faults.mjs). The kit's own
 tests add test engines ([`test/engines/`](test/engines/)), each a conforming deployment the kit
@@ -249,9 +253,10 @@ back pass by pass) and the source's current unit list. A read whose `from` is no
 position is stale and ignored, except a read from scratch, which moves only the position when it
 delivers the units the source holds and otherwise opens a generation. A re-run that reads other
 content than a crashed pass archived opens a generation of its own. Every PostgreSQL upsert writes
-the table's whole column list. Its `chunkBytes` option stores large units in several chunks. Its
-choices where the specification leaves one open are listed in
-[`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md).
+the table's whole column list. Its `chunkBytes` option stores large units in several chunks. It
+stores `adapter_ver` as the adapter states it, keeps a statement's null `child_stored`, and writes
+`orig_sha256` null for a unit without one. The choices it had to make where v0 left one open, the
+v1 answers, and the questions still open are in [`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md).
 
 ## Layout
 
