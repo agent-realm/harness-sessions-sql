@@ -139,6 +139,18 @@ Notes on the table:
   example) and its physical naming are its own business; this specification describes only the
   tables above.
 
+**Derived columns.** A deployment may add derived columns to §3 tables (`sessions.first_prompt`,
+for example).
+- **From one session's current records only.** A derived column holds only values taken from that
+  session's own records, never another session's. It adds no data those records do not have, and
+  the redaction rules hold for it as for the records it copies.
+- **It follows its sources.** When a record it copies is revised, removed or forgotten, the derived
+  column is recomputed, in a new version of its row (principle 4). It never keeps a value the
+  session's current records no longer hold: not a removed message's text, not a forgotten unit's
+  content.
+- **It stays out of identity.** A derived column never enters a key or a `content_sha` (as §4.8
+  already says for added columns), so database profile parity (§8) is unaffected.
+
 **Physical table names.** The tables above are logical names. A deployment may prefix every name (for
 example one prefix per tenant of a shared database) and may keep `session_units` in a
 database of its own. It must say so in one place, for example its schema template. A database
@@ -677,9 +689,13 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
       one, stay null in every database profile, and a part's own `source` or `state` survives
       beside its message's.
 - [ ] **Redaction holds:** on the sentinel-secret fixtures, no value the adapter redacted on a
-      declared redaction path (sessions-model §4) is in any table, and no row holds a planted
-      value that the unit or record it was written from did not hold. Free text an adapter keeps
-      on purpose (sessions-model §4 rule 6) is the adapter's contract, not storage's.
+      declared redaction path (sessions-model §4) is in any table, a column a deployment adds
+      included. No row holds, in this specification's columns, a planted value that the unit or
+      record it was written from did not hold. A column a deployment adds (§3, derived columns)
+      holds one only where a record of the row's session holds it, never another session's, and
+      in the current state (§6) only where a current record holds it, never a removed or
+      forgotten one. Free text an adapter keeps on purpose (sessions-model §4 rule 6) is the
+      adapter's contract, not storage's.
 - [ ] **Database profile parity:** ClickHouse and PostgreSQL, fed the same envelopes, give the same
       current state, compared as sets of `(key, content_sha)`, with `message_content_sha` added
       for `session_parts`. `legacy` rows are left out: they exist only in a ClickHouse database
