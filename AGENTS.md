@@ -90,8 +90,10 @@ checking the engine that writes them. The steps, with
    database, each table under the deployment's prefix where it has one (spec §3, physical table
    names).
 2. **A disposable pair, for tests.** `conformance/compose.yml` starts a ClickHouse and a PostgreSQL
-   on `127.0.0.1`: `SSQL_KIT_PASSWORD=… docker compose up -d` in `conformance/`. Wait until both
-   answer before anything runs against them; the tutorial's first step gives a check for each.
+   on `127.0.0.1`: `export SSQL_KIT_PASSWORD=…` (`…` is a placeholder for a password of your
+   own), then `docker compose up -d` in `conformance/`; exported, the variable reaches every later
+   `docker compose` call. Wait until both answer before anything runs against them; the tutorial's
+   first step gives a bounded check for each.
 3. **The variables.** `SSQL_CH_URL`, `SSQL_CH_USER` and `SSQL_CH_PASSWORD`, and/or `SSQL_PG_URL`,
    for the targets; `SSQL_ADAPTERS` for the session-adapters package (a checkout, for its
    fixtures); `SSQL_ENGINE`, `SSQL_PREFIX` and `SSQL_TIMEOUT_MS` to adjust a kit run

@@ -15,21 +15,27 @@ The kit's [`compose.yml`](../../conformance/compose.yml) starts a ClickHouse and
 this machine, on `127.0.0.1` only ([conformance/README.md, A disposable pair][pair]). Every step
 below creates and drops namespaces of its own there, so point it at nothing you want to keep.
 
+`SSQL_KIT_PASSWORD` is exported first, so that `docker compose` sees it in every later call, not
+only in `up`. `…` stands for a password of your own, with no character a URL must encode.
+
 ```sh
-export SSQL_KIT_PASSWORD=…    # a password of your own, with no character a URL must encode
+export SSQL_KIT_PASSWORD=…
 (cd conformance && npm ci && docker compose up -d)
 export SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=kit SSQL_CH_PASSWORD="$SSQL_KIT_PASSWORD"
 export SSQL_PG_URL="postgres://kit:$SSQL_KIT_PASSWORD@localhost:5432/kit"
 ```
 
-The servers take a few seconds to start. Wait until both answer before step 2:
+The servers take a few seconds to start. Wait until both answer before step 2, for at most a minute
+each:
 
 ```sh
-until curl -sf http://localhost:8123/ping; do sleep 1; done
-until (cd conformance && docker compose exec postgres pg_isready -U kit -d kit); do sleep 1; done
+for i in $(seq 60); do curl -sf http://localhost:8123/ping && break; [ "$i" = 60 ] && echo 'ClickHouse did not answer in 60 tries'; sleep 1; done
+for i in $(seq 60); do (cd conformance && docker compose exec postgres pg_isready -h 127.0.0.1 -U kit -d kit) && break; [ "$i" = 60 ] && echo 'PostgreSQL did not answer in 60 tries'; sleep 1; done
 ```
 
-ClickHouse answers `Ok.`, and `pg_isready` reports that PostgreSQL is accepting connections.
+ClickHouse answers `Ok.`, and `pg_isready` reports that PostgreSQL is accepting connections. The
+`-h 127.0.0.1` makes it check over TCP, as the kit connects: on its first start the image runs a
+temporary server that listens on its socket only.
 
 When you are done, with `SSQL_KIT_PASSWORD` still set: `(cd conformance && docker compose down -v)`.
 
