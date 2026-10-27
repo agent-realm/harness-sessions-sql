@@ -68,9 +68,12 @@ guarantees:
    (sessions-model §1 rule 1), so the session key is
    `(host, harness, harness_path, session_id, incarnation)`, and every table's key starts with it.
    `harness_path` is the data folder's real path (sessions-model §1): absolute, symlinks
-   resolved, in the case the filesystem stores. `host` is the `sessions-model/host/v0` value: the
+   resolved, in the case the filesystem stores. `host` is the sessions-model §1 value: the
    first 32 lowercase hex digits of sha256(`"sessions-model/host/v0:"` + the OS machine id), or
-   `r-` + 32 hex where no machine id can be read. It is never a hostname. Both database profiles reject any
+   `r-` + 32 hex where no machine id can be read, or, for a service-held harness store (claude.ai's
+   conversations, read from an export; sessions-model v1.3), `s-` + 32 hex derived from the
+   service's domain, with the service's origin (`https://claude.ai`) as `harness_path`. It is never
+   a hostname. Both database profiles reject any
    other form, a Postgres `CHECK` and a ClickHouse `CONSTRAINT` on every key `host`, with one
    exemption: a row whose `adapter` is `legacy` (§4.8). The display name sits in
    `sessions.host_label` and is never part of a key.
@@ -577,8 +580,8 @@ A database conforms to `sessions-sql` v0 when:
       (`kind = 'none'`).
 - [ ] **Registries take new values:** a row whose `harness`, `ts_source` or `enc` is a value
       neither database profile has seen is accepted by both, and kept as given.
-- [ ] **Host form:** a row whose key `host` is not the `sessions-model/host/v0` form (32 lowercase
-      hex, or `r-` + 32 lowercase hex), such as a hostname, is rejected by both database profiles, unless
+- [ ] **Host form:** a row whose key `host` is not a sessions-model §1 form (32 lowercase
+      hex, or `r-` or `s-` + 32 lowercase hex), such as a hostname, is rejected by both database profiles, unless
       its `adapter` is `legacy` (§4.8).
 - [ ] **No time partition:** no entity table is partitioned by time, `ts` is Nullable, and a
       null `ts` is never filled with a consumer's first-seen time (§3).

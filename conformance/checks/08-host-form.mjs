@@ -1,20 +1,26 @@
-// §8: "Host form: a row whose key host is not the sessions-model/host/v0 form (32 lowercase hex,
-// or r- + 32 lowercase hex), such as a hostname, is rejected by both database profiles, unless its
+// §8: "Host form: a row whose key host is not a sessions-model §1 form (32 lowercase hex, or r- or
+// s- + 32 lowercase hex), such as a hostname, is rejected by both database profiles, unless its
 // adapter is legacy (§4.8)."
 //
 // Database check, with plain SQL and synthetic rows, in every table with a key `host`:
-// - accepted: 32 lowercase hex, and r- + 32 lowercase hex;
+// - accepted: 32 lowercase hex, r- + 32 lowercase hex, and s- + 32 lowercase hex (a service-held
+//   harness store, sessions-model v1.3; the claude.ai known answer, with its origin as harness_path);
 // - rejected: a hostname (my-laptop), uppercase hex, 31 and 33 hex digits, 32 hex digits with a
 //   prefix (x + 32 hex) or a suffix, r- + 31 and r- + 33 hex digits, and '' (so a check that only
-//   looks for 32 hex digits somewhere, without ^ and $, fails);
+//   looks for 32 hex digits somewhere, without ^ and $, fails), an undefined prefix (t-), and s- with
+//   uppercase hex or 31 hex digits;
 // - in the entity tables, a hostname row whose adapter is `legacy` is accepted (§4.8);
 // - session_links' reference hosts (other_host, child_host, origin_host) follow the same rule,
 //   with '' (the stating session's own harness store) accepted.
+//
+// Not run yet: the s- cases have not been run against either database profile.
 
 import { insertRows } from '../lib/db.mjs';
 import { syntheticRows, HOST_A } from '../envelopes.mjs';
 import { verdict } from '../lib/result.mjs';
 
+// sessions-model v1.3's known answer for claude.ai's service-held harness store.
+const HOST_S = 's-b8fdcc6d6c24b3fd5ad7e508e6143416';
 const ENTITY = ['sessions', 'session_parts', 'session_usage', 'session_links', 'session_lifecycle'];
 const WRONG_FORMS = [
   [`${HOST_A}0`, '33 hex digits'],
@@ -23,6 +29,9 @@ const WRONG_FORMS = [
   [`r-${HOST_A.slice(1)}`, 'r- and 31 hex digits'],
   [`r-${HOST_A}0`, 'r- and 33 hex digits'],
   ['', "''"],
+  [`t-${HOST_A}`, 'an undefined prefix (t-)'],
+  [`s-${HOST_A.toUpperCase()}`, 's- and uppercase hex'],
+  [`s-${HOST_A.slice(1)}`, 's- and 31 hex digits'],
 ];
 
 export default {
@@ -53,6 +62,7 @@ export default {
       };
       await attempt(table, base(HOST_A), true, 'a host/v0 value');
       await attempt(table, base(`r-${'0123456789abcdef'.repeat(2)}`), true, 'an r- value');
+      await attempt(table, base(HOST_S, { harness_path: 'https://claude.ai' }), true, 'an s- value (a service-held harness store)');
       await attempt(table, base('my-laptop'), false, "the hostname 'my-laptop'");
       await attempt(table, base(HOST_A.toUpperCase()), false, 'uppercase hex');
       await attempt(table, base(HOST_A.slice(1)), false, '31 hex digits');
@@ -63,6 +73,7 @@ export default {
       const row = (v, extra = {}) => ({ ...syntheticRows({ host: HOST_A }).session_links, session_id: `kit-l${++i}`, [c]: v, ...extra });
       await attempt('session_links', row(''), true, `${c} ''`);
       await attempt('session_links', row(HOST_A), true, `${c} a host/v0 value`);
+      await attempt('session_links', row(HOST_S), true, `${c} an s- value`);
       await attempt('session_links', row('my-laptop'), false, `${c} 'my-laptop'`);
       await attempt('session_links', row(`${HOST_A}0`), false, `${c} 33 hex digits`);
       await attempt('session_links', row('my-laptop', { adapter: 'legacy' }), true, `${c} 'my-laptop' on a legacy row`);

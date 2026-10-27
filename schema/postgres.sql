@@ -13,7 +13,7 @@
 -- The writer column is optional; where used it is set by a trigger or a column DEFAULT current_user.
 
 CREATE TABLE session_units (
-    host          text        NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$'),
+    host          text        NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$'),
     harness       text        NOT NULL,
     harness_path  text        NOT NULL,              -- the data folder's real path
     session_id    text        NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE session_units (
 -- 4.6 (informative: one cursor layout; not required for conformance).
 -- Upsert WHERE (EXCLUDED.generation, EXCLUDED.progress) > (t.generation, t.progress).
 CREATE TABLE session_sources (
-    host               text    NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$'),
+    host               text    NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$'),
     harness            text    NOT NULL,
     harness_path       text    NOT NULL,
     session_id         text    NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE session_sources (
 );
 
 CREATE TABLE sessions (
-    host             text     NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    host             text     NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     host_label       text     NOT NULL DEFAULT '',  -- display only (e.g. my-laptop), never in a key
     harness          text     NOT NULL,
     harness_path     text     NOT NULL,
@@ -97,7 +97,7 @@ CREATE TABLE sessions (
 -- One row per part, each carrying its message's columns, so a message reads without a join.
 -- A message with no parts: one row, part_id = '' and kind = 'none'.
 CREATE TABLE session_parts (
-    host                 text NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    host                 text NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     harness              text NOT NULL,
     harness_path         text NOT NULL,
     session_id           text NOT NULL,
@@ -166,7 +166,7 @@ CREATE TABLE session_parts (
 );
 
 CREATE TABLE session_usage (
-    host           text NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    host           text NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     harness        text NOT NULL,
     harness_path   text NOT NULL,
     session_id     text NOT NULL,
@@ -199,26 +199,26 @@ CREATE TABLE session_usage (
 
 -- owner = 'adapter': statements, reconciled against live. owner = 'engine': edges, keyed on the child.
 CREATE TABLE session_links (
-    host                text NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    host                text NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     harness             text NOT NULL,
     harness_path        text NOT NULL,
     session_id          text NOT NULL,
     incarnation         text NOT NULL DEFAULT '',
     owner               text NOT NULL,
     kind                text NOT NULL,
-    other_host          text NOT NULL DEFAULT '' CHECK (other_host = '' OR other_host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),   -- '': the stating session's own harness store
+    other_host          text NOT NULL DEFAULT '' CHECK (other_host = '' OR other_host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),   -- '': the stating session's own harness store
     other_harness_path  text NOT NULL DEFAULT '',
     other_harness       text NOT NULL,
     other_session_id    text NOT NULL,
     other_incarnation   text NOT NULL DEFAULT '',    -- '': unknown, or the empty incarnation
     at                  text NOT NULL DEFAULT '',
     stated_on           text NOT NULL,
-    child_host          text NOT NULL DEFAULT '' CHECK (child_host = '' OR child_host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    child_host          text NOT NULL DEFAULT '' CHECK (child_host = '' OR child_host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     child_harness_path  text NOT NULL DEFAULT '',
     child_harness       text NOT NULL,
     child_session_id    text NOT NULL,
     child_incarnation   text,
-    origin_host         text NOT NULL DEFAULT '' CHECK (origin_host = '' OR origin_host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    origin_host         text NOT NULL DEFAULT '' CHECK (origin_host = '' OR origin_host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     origin_harness_path text NOT NULL DEFAULT '',
     origin_harness      text NOT NULL,
     origin_session_id   text NOT NULL,
@@ -244,7 +244,7 @@ CREATE TABLE session_links (
 );
 
 CREATE TABLE session_lifecycle (
-    host            text NOT NULL CHECK (host ~ '^(r-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
+    host            text NOT NULL CHECK (host ~ '^([rs]-)?[0-9a-f]{32}$' OR adapter = 'legacy'),
     harness         text NOT NULL,
     harness_path    text NOT NULL,
     session_id      text NOT NULL,
