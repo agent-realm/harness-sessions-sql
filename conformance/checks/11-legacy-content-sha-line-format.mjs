@@ -1,12 +1,13 @@
-// §8: "Legacy content_sha, line format: each of §4.8's known-answer vectors (column values, their
-// TabSeparated line, its sha) gives the same sha through the implementation's SQL."
+// §8: "Legacy content_sha, line format (ClickHouse database profile): each of §4.8's known-answer
+// vectors (column values, their TabSeparated line, its sha) gives the same sha through the
+// implementation's SQL."
 //
 // The vectors are read from §4.8 itself. Each line's bytes are hashed outside SQL first (a vector
 // that disagrees with itself fails), then the implementation's SQL (the engine's `legacySha`) is
 // run with the settings §4.8 pins, for the line and its sha. An engine with no legacySha has
-// proved nothing here, so the check is skipped for it. A legacy conversion runs where its source
-// is, a ClickHouse database (§4.8), and §4.8 gives the SQL for ClickHouse only: on PostgreSQL the
-// item does not apply.
+// proved nothing here, so the check is skipped for it. Legacy conversion exists only for
+// ClickHouse houses (§4.8), so the item is a ClickHouse database profile item: on PostgreSQL it
+// does not apply.
 
 import { knownAnswerVectors } from '../lib/spec.mjs';
 import { sha256 } from '../lib/jcs.mjs';
@@ -21,7 +22,7 @@ export default {
 
   // An engine part: what it proves is the implementation's SQL, not its DDL.
   async engine(ctx) {
-    if (ctx.profile !== 'clickhouse') return na('§4.8 computes a legacy content_sha in the ClickHouse database a conversion reads, and gives its SQL for ClickHouse only');
+    if (ctx.profile !== 'clickhouse') return na('a ClickHouse database profile item (§8): legacy conversion exists only for ClickHouse houses (§4.8)');
     const problems = [];
     const ns = await ctx.namespace();
     const engine = await ctx.engine(ns);

@@ -1,11 +1,13 @@
-// §8: "No-op manifests: a pass that omits the manifest of a read that opened no generation and
-// delivered nothing replays to the same current state as a pass that writes it."
+// §8: "No-op manifests: a pass that omits the manifest of a read that changes nothing in the fold
+// (§4.1) replays to the same current state as a pass that writes it."
 //
 // The noop scenario: pass 2 and pass 4 read nothing new. The live archive is copied twice: once
-// whole, once without every no-op manifest (a manifest with no units, no gone keys, no
-// source_gone, in a generation an earlier manifest opened). Both copies are replayed; they must
-// give the same state, removed versions included. An engine that omits no-op manifests already
-// gives two equal copies, and passes.
+// whole, once without every no-op manifest. A manifest is a no-op (§4.1) when it opens no
+// generation (an earlier manifest opened it), is not source_gone, and changes nothing in the
+// fold: its generation already holds every unit it lists, with the same sha256, and no longer
+// holds any key in its gone. Both copies are replayed; they must give the same state, removed
+// versions included. An engine that omits no-op manifests already gives two equal copies, and
+// passes.
 
 import { snapshot, diffSnapshots } from '../lib/state.mjs';
 import { ENTITY_TABLES, sessionKeyOf } from '../lib/keys.mjs';
@@ -23,13 +25,23 @@ export default {
     const engine = await ctx.engine(live);
     for (const p of sc.passes) await engine.pass(p);
     const manifests = (await live.present('session_units')).filter((r) => r.unit_key === '' && r.enc === 'manifest').map((r) => ({ r, m: JSON.parse(r.raw) }));
-    const opened = new Map();
-    for (const { r, m } of manifests) {
+    // Each generation's units, folded in progress order; a manifest that changes nothing in it is
+    // a no-op.
+    const held = new Map();
+    const noop = [];
+    for (const x of [...manifests].sort((a, b) => Number(a.m.progress) - Number(b.m.progress))) {
+      const { r, m } = x;
       const g = `${sessionKeyOf(r)}\u0000${r.source_key}\u0000${r.generation}`;
-      opened.set(g, Math.min(opened.get(g) ?? Infinity, Number(m.progress)));
+      const units = held.get(g);
+      if (!units) {
+        held.set(g, new Map(m.units ?? []));
+        continue;
+      }
+      const changes = (m.units ?? []).some(([uk, sha]) => units.get(uk) !== sha) || (m.gone ?? []).some((k) => units.has(k));
+      if (!m.source_gone && !changes) noop.push(x);
+      for (const [uk, sha] of m.units ?? []) units.set(uk, sha);
+      for (const k of m.gone ?? []) units.delete(k);
     }
-    const noop = manifests.filter(({ r, m }) => !m.units?.length && !m.gone?.length && !m.source_gone
-      && Number(m.progress) > opened.get(`${sessionKeyOf(r)}\u0000${r.source_key}\u0000${r.generation}`));
     const withAll = await ctx.namespace();
     await ctx.copyUnits(live, withAll);
     const without = await ctx.namespace();

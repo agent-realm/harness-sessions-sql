@@ -1,7 +1,7 @@
 // §8: "Database profile parity: ClickHouse and PostgreSQL, fed the same envelopes, give the same
 // current state, compared as sets of (key, content_sha), with message_content_sha added for
-// session_parts. legacy rows are left out: each exists only in the database profile its
-// conversion ran in (§4.8)."
+// session_parts. legacy rows are left out: they exist only in a ClickHouse database profile
+// (§4.8)."
 //
 // The broad and rewind scenarios, each into one namespace per profile. Current state of every
 // entity table, engine edges included, as (identity, content_sha[, message_content_sha]);

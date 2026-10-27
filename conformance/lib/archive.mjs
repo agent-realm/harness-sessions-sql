@@ -20,8 +20,8 @@ import { sha256 } from './jcs.mjs';
 import { sessionKeyOf, sessionKeyObject } from './keys.mjs';
 
 export const EXEMPT = new Set(['memhouse-bridge', 'memhouse-log', 'legacy']);
-// §4.1's list, plus `unchanged`, which the seam returns for a read with nothing new and which the
-// kit accepts pending §4.1 (SPEC-QUESTIONS.md).
+// §4.1's closed list: the read's sessions §3 value, `unchanged` (a read with nothing new) included;
+// a source_gone manifest's is `reset`.
 export const CONTINUITIES = new Set(['appended', 'delta', 'reset', 'snapshot', 'unchanged']);
 const KEYS = ['progress', 'continuity', 'units', 'gone', 'source_gone'];
 const SHA = /^[0-9a-f]{64}$/;

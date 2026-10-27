@@ -1,5 +1,7 @@
-// §8: "Twice is once: ingesting the same envelopes twice gives no duplicate logical rows in any
-// table."
+// §8: "Twice is once: ingesting the same envelopes again adds no version of any entity row, no
+// cursor row version, no unit row and no generation. It may add read manifests that deliver
+// nothing new: in a generation that already exists, not source_gone, listing only units that
+// generation already holds and only gone keys it already reported."
 //
 // Each pass is delivered twice in a row: the same pass run again, as §5 repairs a crash ("every
 // step is idempotent"). After each repeat:
@@ -9,8 +11,7 @@
 //   nothing new: in a generation it already had, not source_gone, listing only units the
 //   generation already archived with the same sha256, and only gone keys an earlier manifest of
 //   that generation already listed. An `unchanged` read, or a delta read whose position did not
-//   move, cannot be told from a new read by its position, and its manifest replays to no change;
-//   the kit reads "duplicate logical row" as a row that repeats content (SPEC-QUESTIONS.md).
+//   move, cannot be told from a new read by its position, and its manifest replays to no change.
 // The whole sequence is not delivered again after its last pass: a pass-1 read delivered after
 // pass 2 is a stale read (or a consumer starting over), which only an engine that compares `from`
 // with its cursor can tell apart, and the specification does not say it must (SPEC-QUESTIONS.md).

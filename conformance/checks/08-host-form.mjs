@@ -12,8 +12,6 @@
 // - in the entity tables, a hostname row whose adapter is `legacy` is accepted (§4.8);
 // - session_links' reference hosts (other_host, child_host, origin_host) follow the same rule,
 //   with '' (the stating session's own harness store) accepted.
-//
-// Not run yet: the s- cases have not been run against either database profile.
 
 import { insertRows } from '../lib/db.mjs';
 import { syntheticRows, HOST_A } from '../envelopes.mjs';
@@ -57,7 +55,7 @@ export default {
     let i = 0;
     for (const table of tables) {
       const base = (host, extra = {}) => {
-        if (table === 'session_sources') return { host, harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: `kit-s${++i}`, incarnation: '', source_key: 'kit.jsonl', mode: 'stream', generation: 1, progress: 1, state_ver: 1, adapter: 'kit-adapter', adapter_ver: 1, ...extra };
+        if (table === 'session_sources') return { host, harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: `kit-s${++i}`, incarnation: '', source_key: 'kit.jsonl', mode: 'stream', generation: 1, progress: 1, state_ver: 1, adapter: 'kit-adapter', adapter_ver: '0.0.1', ...extra };
         return { ...syntheticRows({ host })[table], session_id: `kit-s${++i}`, ...extra };
       };
       await attempt(table, base(HOST_A), true, 'a host/v0 value');

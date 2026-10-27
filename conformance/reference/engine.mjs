@@ -21,11 +21,15 @@
 //   progress above the cursor's). When the re-run of a source reads something else from the same
 //   position, its read opens a generation of its own, holding the whole source as that read
 //   leaves it, so a replay never folds the crashed read and the re-run together (SPEC-QUESTIONS.md).
+// - Its `firstPrompt` option keeps a derived column (spec §3), `sessions.first_prompt`: the text of
+//   the session's first user message among its current rows, recomputed after every pass and
+//   replay and written as a new version of the session's row where it changed. The column is the
+//   deployment's own: `addFirstPromptColumn` adds it to schema/'s DDL.
 //
 // Fault flags (`faults`) break one behaviour each. The kit's self-test runs every check against
 // its fault, which must make it fail: the checks' positive controls. They exist for that only.
 
-import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, rowKey, encodeAdapterVer } from './rows.mjs';
+import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, rowKey, statedAdapterVer } from './rows.mjs';
 import { jcs, jcsSha, sha256 } from '../lib/jcs.mjs';
 import { unitFromArchive } from '../lib/adapters.mjs';
 import { loadSchema } from '../lib/db.mjs';
@@ -42,8 +46,27 @@ export const ENGINE_FAULTS = new Set([
   'zero-nulls', 'unredact', 'pg-skew', 'sql-tsv-no-trim', 'policy-kept-as-removed', 'private-manifest',
   'ignore-crash', 'no-rerun-bump', 'part-sha-no-nulls', 'chunk-drop', 'pg-partial-upsert',
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
-  'manifest-whole-generation',
+  'manifest-whole-generation', 'encode-adapter-ver', 'child-stored-default', 'orig-sha-zero',
+  'derived-stale', 'derived-other-session', 'replay-current-policy',
 ]);
+
+// Fault `replay-current-policy`: the deployment's current vanish policy, the one its latest vanish
+// decision applied. Process-wide, as a deployment's setting is, so a replay on another instance
+// sees it.
+let currentPolicy = null;
+
+// The derived column `sessions.first_prompt` (the `firstPrompt` option), per profile.
+const FIRST_PROMPT = { clickhouse: "first_prompt     String DEFAULT ''", postgres: "first_prompt     text NOT NULL DEFAULT ''" };
+
+// A DDL transform (loadSchema's `transforms`): schema/'s sessions table with `first_prompt` after
+// `title`, as a deployment's own DDL adds it.
+export function addFirstPromptColumn(text, profile) {
+  const at = text.search(/CREATE TABLE sessions\b/);
+  const title = at < 0 ? -1 : text.slice(at).search(/\n\s+title\s[^\n]*\n/);
+  if (title < 0) throw new Error('addFirstPromptColumn: no title column in sessions');
+  const end = text.indexOf('\n', at + title + 1) + 1;
+  return `${text.slice(0, end)}    ${FIRST_PROMPT[profile]},\n${text.slice(end)}`;
+}
 
 export function createEngine(opts) {
   return new ReferenceEngine(opts);
@@ -67,8 +90,10 @@ const num = (v) => Number(v ?? 0);
 class ReferenceEngine {
   // `chunkBytes`, the reference's own option: store a unit whose raw is longer than that many
   // bytes in several chunks (§4.1 `chunk`), its raw split at character boundaries; 0, the
-  // default, keeps every unit in one.
-  constructor({ profile, ns, adapters, faults = [], faultData = {}, chunkBytes = 0 }) {
+  // default, keeps every unit in one. `firstPrompt`, the reference's own option too: `'current'`
+  // keeps the derived column `sessions.first_prompt` (see the header), which the deployment's DDL
+  // must have; null, the default, keeps none.
+  constructor({ profile, ns, adapters, faults = [], faultData = {}, chunkBytes = 0, firstPrompt = null }) {
     this.profile = profile;
     this.ns = ns;
     this.adapters = adapters;
@@ -78,11 +103,19 @@ class ReferenceEngine {
     this.name = name;
     this.version = version;
     this.removal = 'removed';
+    // Both vanish policies (§4.1), each recorded in its source_gone manifest and replayed from it.
+    this.vanishPolicies = ['kept', 'removed'];
     this.crashPoints = ['archive', 'entities', 'removed', 'edges'];
     // Fault `chunk-drop`: chunked units lose their last chunk in the archive; the engine derives
     // from the reads it holds in memory, so only the archive is wrong.
     this.chunkBytes = this.faults.has('chunk-drop') ? (chunkBytes || 256) : chunkBytes;
     this.memo = new Map();
+    // Faults `derived-stale` and `derived-other-session`: the derived column kept wrongly, in a
+    // column the engine adds to its sessions table itself (the self-test's DDL has none).
+    this.addsFirstPrompt = this.faults.has('derived-stale') || this.faults.has('derived-other-session');
+    this.firstPrompt = this.faults.has('derived-stale') ? 'stale' : this.faults.has('derived-other-session') ? 'other-session' : firstPrompt;
+    if (this.firstPrompt !== null && !['current', 'stale', 'other-session'].includes(this.firstPrompt)) throw new Error(`unknown firstPrompt ${this.firstPrompt}`);
+    this.firstSeen = new Map();
   }
 
   // ---- the pass (spec §5) ---------------------------------------------------------------------
@@ -93,6 +126,7 @@ class ReferenceEngine {
     // no manifest for a read that changes nothing in the fold, which an engine may omit, so a pass
     // run twice leaves no trace of its second run).
     if (F.has('ignore-crash')) crashAfter = undefined;
+    if (this.addsFirstPrompt) await this.ensureFirstPrompt();
     const groups = new Map();
     for (const e of envelopes) {
       const S = sessionKeyObject(e.store, e.session);
@@ -221,6 +255,9 @@ class ReferenceEngine {
     await this.recomputeEdges(clocks, F.has('edges-from-pass') ? work : null);
     if (crashAfter === 'edges') return { crashed: 'edges' };
 
+    // The derived column, where the engine keeps one (its `firstPrompt` option).
+    if (this.firstPrompt) await this.writeFirstPrompts(clocks);
+
     // 5. The cursor.
     if (!F.has('cursor-early')) await this.writeCursors(work);
     return {};
@@ -239,6 +276,7 @@ class ReferenceEngine {
       // Fault `policy-kept-as-removed`: a vanished source the consumer keeps is removed, live and
       // in the manifest alike, so a replay agrees with the live state and both are wrong.
       const policy = F.has('policy-kept-as-removed') ? 'removed' : e.policy;
+      currentPolicy = policy;
       state = { generation, units: policy === 'kept' ? (c?.units ?? []) : [], gone: true, policy, position: '', mode: c?.mode ?? e.mode ?? '', progress };
       // A vanished source opens a generation with no read: its manifest's continuity is `reset`.
       manifest = { progress, continuity: 'reset', units: [], gone: [], source_gone: true, policy };
@@ -273,7 +311,10 @@ class ReferenceEngine {
   // `manifest` is null).
   rowsOfRead(S, e, meta, generation, units, manifest) {
     const F = this.faults;
-    const base = { ...S, source_key: e.source_key, chunk: 0, adapter: meta.adapter, adapter_ver: encodeAdapterVer(meta.adapter_ver) };
+    // orig_sha256 is null for a unit without an original sha, and for a manifest (spec §4.1).
+    // Fault `orig-sha-zero`: '' instead (64 zero bytes in ClickHouse, spaces in PostgreSQL).
+    const noOrig = F.has('orig-sha-zero') ? '' : null;
+    const base = { ...S, source_key: e.source_key, chunk: 0, adapter: meta.adapter, adapter_ver: statedAdapterVer(meta.adapter_ver), orig_sha256: noOrig };
     const rows = units.flatMap((u) => {
       let raw = this.unredact(u.body);
       let enc = u.enc;
@@ -288,7 +329,7 @@ class ReferenceEngine {
       if (F.has('chunk-drop') && pieces.length > 1) pieces = pieces.slice(0, -1);
       return pieces.map((piece, chunk) => ({
         ...base, generation, unit_key: u.unit_key, chunk, sha256: u.sha256, enc,
-        ...(u.orig_sha256 ? { orig_sha256: u.orig_sha256 } : {}),
+        orig_sha256: u.orig_sha256 ?? noOrig,
         redacted: !!u.redacted, continuity: manifest?.continuity ?? e.read.continuity, raw: piece,
       }));
     });
@@ -341,6 +382,7 @@ class ReferenceEngine {
         if (table === 'session_usage') for (const c of ['input', 'output', 'cache_read', 'cache_write', 'reasoning', 'tool_prompt', 'cost']) row[c] ??= 0;
         if (table === 'session_parts' && row.kind === 'tool_result') row.exit_code ??= 0;
       }
+      if (F.has('child-stored-default') && table === 'session_links') row.child_stored ??= true;
       // Faults `part-sha-no-nulls` (both profiles) and `pg-skew` (PostgreSQL only): a part's
       // content_sha over the part without its null members, not the part as emitted (§4).
       if ((F.has('part-sha-no-nulls') || (F.has('pg-skew') && this.profile === 'postgres')) && table === 'session_parts' && row.part_id !== '') {
@@ -377,7 +419,7 @@ class ReferenceEngine {
         const want = isRemoved ? 1 : 0;
         if (!ex || num(ex.removed) !== want || ex.content_sha !== row.content_sha
           || (row.message_content_sha !== undefined && ex.message_content_sha !== row.message_content_sha)
-          || num(ex.adapter_ver) !== row.adapter_ver) {
+          || String(ex.adapter_ver) !== row.adapter_ver) {
           writes.push({ table, row: { ...row, removed: want, rev } });
         }
       }
@@ -478,6 +520,7 @@ class ReferenceEngine {
   // produces are deleted.
   async replay({ adapterVer } = {}) {
     const F = this.faults;
+    if (this.addsFirstPrompt) await this.ensureFirstPrompt();
     const all = await this.present('session_units');
     const sessions = new Map();
     for (const row of all) {
@@ -529,6 +572,7 @@ class ReferenceEngine {
     await this.writeVersions(writes);
     await this.deleteRows(deletes);
     await this.recomputeEdges(clocks, null);
+    if (this.firstPrompt) await this.writeFirstPrompts(clocks);
     return {};
   }
 
@@ -564,7 +608,9 @@ class ReferenceEngine {
         const prev = sources.get(row.source_key);
         const generation = Number(row.generation);
         if (m.source_gone) {
-          const policy = F.has('ignore-policy') ? 'removed' : (m.policy ?? 'removed');
+          // Fault `replay-current-policy`: the current setting, not the policy the manifest records.
+          const recorded = F.has('replay-current-policy') && currentPolicy ? currentPolicy : (m.policy ?? 'removed');
+          const policy = F.has('ignore-policy') ? 'removed' : recorded;
           sources.set(row.source_key, { generation, units: policy === 'kept' ? new Map(prev?.units ?? []) : new Map() });
         } else if (!prev || prev.generation !== generation || F.has('replay-last-manifest')) {
           sources.set(row.source_key, { generation, units: new Map(m.units) });
@@ -576,6 +622,53 @@ class ReferenceEngine {
       steps.push(new Map([...sources].map(([k, v]) => [k, { generation: v.generation, units: new Map(v.units) }])));
     }
     return steps;
+  }
+
+  // ---- a derived column (§3) --------------------------------------------------------------------
+
+  // Faults `derived-stale` and `derived-other-session`: the engine adds the column itself.
+  async ensureFirstPrompt() {
+    if (this.firstPromptReady) return;
+    await this.ns.exec(`ALTER TABLE ${this.ns.t('sessions')} ADD COLUMN IF NOT EXISTS ${FIRST_PROMPT[this.profile]}`);
+    this.firstPromptReady = true;
+  }
+
+  // `sessions.first_prompt` of every current session row: the text parts of the session's first
+  // user message among its current rows (lowest order_key, then message_id), joined by newlines,
+  // or '' for none; written as a new version of the row, at a higher rev, where it changed (spec
+  // §3: a derived column follows its sources). A removed version keeps the copy it was made with
+  // (principle 3). Fault `derived-stale`: each session keeps the first value the engine computed
+  // for it, so a removed first message's text stays. Fault `derived-other-session`: each session
+  // takes the next session's value (sessions in key order, the last taking the first's).
+  async writeFirstPrompts(clocks) {
+    const sessions = (await this.present('sessions')).filter((r) => num(r.removed) === 0);
+    const firstUser = new Map();
+    for (const r of await this.present('session_parts')) {
+      if (num(r.removed) !== 0 || r.role !== 'user') continue;
+      const sk = sessionKeyOf(r);
+      const at = [String(r.order_key), String(r.message_id)];
+      const cur = firstUser.get(sk);
+      if (!cur || at[0] < cur.at[0] || (at[0] === cur.at[0] && at[1] < cur.at[1])) firstUser.set(sk, { at, parts: [r] });
+      else if (at[0] === cur.at[0] && at[1] === cur.at[1]) cur.parts.push(r);
+    }
+    const own = new Map([...firstUser].map(([sk, { parts }]) => [sk, parts.filter((p) => p.kind === 'text')
+      .sort((a, b) => num(a.part_index) - num(b.part_index)).map((p) => p.text).join('\n')]));
+    const keys = [...new Set(sessions.map(sessionKeyOf))].sort();
+    const writes = [];
+    for (const row of sessions) {
+      const sk = sessionKeyOf(row);
+      let want = own.get(sk) ?? '';
+      if (this.firstPrompt === 'other-session') want = own.get(keys[(keys.indexOf(sk) + 1) % keys.length]) ?? '';
+      if (this.firstPrompt === 'stale') {
+        if (!this.firstSeen.has(sk)) this.firstSeen.set(sk, want);
+        want = this.firstSeen.get(sk);
+      }
+      if ((row.first_prompt ?? '') === want) continue;
+      const rev = (clocks.get(sk) ?? 0) + 1;
+      clocks.set(sk, rev);
+      writes.push({ table: 'sessions', row: { ...row, first_prompt: want, rev } });
+    }
+    await this.writeVersions(writes);
   }
 
   // ---- legacy content_sha (§4.8) ----------------------------------------------------------------
@@ -662,7 +755,7 @@ class ReferenceEngine {
         rows.push({
           ...w.S, source_key: sourceKey, mode: st.mode ?? '', position: st.position ?? '', generation: st.generation, progress: st.progress,
           state: jcs({ units: st.units, gone: st.gone, policy: st.policy ?? null }), state_ver: Number(d.state_ver ?? 0),
-          adapter: d.adapter, adapter_ver: encodeAdapterVer(d.adapter_ver),
+          adapter: d.adapter, adapter_ver: statedAdapterVer(d.adapter_ver),
         });
       }
     }
@@ -694,6 +787,8 @@ class ReferenceEngine {
 
   async write(table, rows) {
     if (!rows.length) return;
+    // Fault `encode-adapter-ver`: the version string stored as an integer encoding of a.b.c.
+    if (this.faults.has('encode-adapter-ver')) rows = rows.map((r) => (r.adapter_ver === undefined ? r : { ...r, adapter_ver: encodedVer(r.adapter_ver) }));
     if (this.profile === 'clickhouse') {
       await this.ns.client.insert(this.ns.t(table), rows.map((r) => encodeClickHouse(table, r)));
       return;
@@ -747,6 +842,13 @@ class ReferenceEngine {
     }
     return this.columnCache.get(table);
   }
+}
+
+// Fault `encode-adapter-ver` only: a.b.c as a·10^6 + b·10^3 + c, the kind of encoding the spec
+// rules out (§4: the version string, as stated).
+function encodedVer(v) {
+  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return m ? String(Number(m[1]) * 1e6 + Number(m[2]) * 1e3 + Number(m[3])) : String(v);
 }
 
 // A position as the cursor keeps it: canonical JSON, and '' for none (a null `from`, a null
@@ -837,7 +939,6 @@ function encodeClickHouse(table, row) {
   // `args` is a String with '' for none; `setup` a Nullable(String).
   if (table === 'session_parts' && r.args === null) r.args = '';
   if (r.is_deleted !== undefined) r.is_deleted = num(r.is_deleted === true ? 1 : r.is_deleted === false ? 0 : r.is_deleted);
-  if (r.orig_sha256 === null) delete r.orig_sha256;
   return r;
 }
 
@@ -854,6 +955,5 @@ function encodePostgres(table, row) {
   if (r.is_deleted !== undefined) r.is_deleted = r.is_deleted === true || r.is_deleted === 1 || r.is_deleted === '1';
   if (r.removed !== undefined) r.removed = num(r.removed);
   if (r.redacted !== undefined) r.redacted = r.redacted === true || r.redacted === 1;
-  if (r.orig_sha256 === '' || r.orig_sha256 === undefined) delete r.orig_sha256;
   return r;
 }

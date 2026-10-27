@@ -1,7 +1,8 @@
 // §8: "Removed equals not live: after each pass, a session's current adapter-owned keys (not
-// deleted, not removed) are exactly that pass's live sets. Every key that left live has a removed
-// version, or a tombstone for a tombstoning consumer (sessions §4 allows either), and none of them
-// counts in totals."
+// deleted, not removed) are exactly that pass's live sets plus each key in held that was written
+// before (sessions §2: a held key's last written version stands). Every key that left live and
+// held has a removed version, or a tombstone for a tombstoning consumer (sessions §4 allows
+// either), and none of them counts in totals."
 //
 // The rewind scenario: a Copilot rewind (reset), an OpenCode revert and prompt-while-reverted
 // (delta with gone rows), a Gemini `$rewindTo` (an append-only retraction). After each pass:

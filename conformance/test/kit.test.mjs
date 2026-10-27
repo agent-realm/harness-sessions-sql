@@ -14,7 +14,7 @@ import { ddlStatements, describeTarget, norm } from '../lib/db.mjs';
 import { rkOfLive, rkOfRow, recordKey } from '../lib/keys.mjs';
 import { DDL_FAULTS, DDL_FAULT_PROFILES } from '../reference/faults.mjs';
 import { keyElements } from '../checks/01-tables-and-keys.mjs';
-import { encodeAdapterVer } from '../reference/rows.mjs';
+import { rowsOf, edgesOf } from '../reference/rows.mjs';
 import { bumpVersion } from '../lib/adapters.mjs';
 import { scrub, registerUrl, registerSecret } from '../lib/secrets.mjs';
 import { openNamespace, loadSchema, targets as readTargets } from '../lib/db.mjs';
@@ -65,6 +65,16 @@ test('DDL faults: each finds its pattern in the profiles it applies to', () => {
   }
 });
 
+test('a derived column (§3): first_prompt lands in sessions after title, and is no column of the specification', () => {
+  for (const profile of ['clickhouse', 'postgres']) {
+    const sessions = ddlStatements(profile, { qualify: (t) => t, transforms: [reference.addFirstPromptColumn] }).find((s) => s.startsWith('CREATE TABLE sessions'));
+    assert.match(sessions, /\n\s+title\s[^\n]*\n\s+first_prompt\s/, profile);
+    const spec = ddlColumns(profile, 'sessions', { materialized: true });
+    assert.ok(!spec.includes('first_prompt'), profile);
+    assert.ok(spec.includes('writer'), `${profile}: the server-stamped writer is a column of the specification`);
+  }
+});
+
 test('a ClickHouse key splits at its top-level commas only', () => {
   assert.deepEqual(keyElements("toDate(ts), host, toStartOfInterval(ts, INTERVAL 1 day), 'a,b', part_id"),
     ['toDate(ts)', 'host', 'toStartOfInterval(ts, INTERVAL 1 day)', "'a,b'", 'part_id']);
@@ -90,10 +100,26 @@ test('targets are printed without credentials; values compare alike across profi
   assert.equal(norm(true), 'true');
 });
 
-test('adapter_ver: a.b.c encoded as an integer, and the kit bumps the patch', () => {
-  assert.equal(encodeAdapterVer('0.2.0'), 2000);
+test('adapter_ver: stored as the adapter states it, with no encoding; the kit bumps the patch', () => {
+  const meta = { adapter: 'kit-adapter', adapter_ver: '0.2.0', model_version: 'sessions-model/1' };
+  const [{ row }] = rowsOf({ type: 'usage', host: 'h', harness: 'kit-harness', harness_path: '/home/user/.kit', session_id: 's', usage_id: 'u', anchor: {}, granularity: 'per_message', content_sha: 'x' }, meta);
+  assert.equal(row.adapter_ver, '0.2.0');
   assert.equal(bumpVersion('0.2.0'), '0.2.1');
-  assert.ok(encodeAdapterVer(bumpVersion('1.9.9')) > encodeAdapterVer('1.9.9'));
+  assert.equal(bumpVersion('1.9.999'), '1.9.1000');
+});
+
+test('child_stored: null stays null on a statement, and on an edge whose statements do not say', () => {
+  const meta = { adapter: 'kit-adapter', adapter_ver: '0.2.0', model_version: 'sessions-model/1' };
+  const S = { host: 'h', harness: 'kit-harness', harness_path: '/home/user/.kit', incarnation: '' };
+  const stmt = (session_id, stated_on, child_stored) => rowsOf({
+    ...S, session_id, type: 'link', kind: 'subagent', stated_on, at: 'call-1', child_stored, content_sha: 'x',
+    child: { harness: 'kit-harness', session_id: 'child' }, origin: { harness: 'kit-harness', session_id: 'origin' },
+  }, meta)[0].row;
+  const held = [{ ...S, session_id: 'child' }, { ...S, session_id: 'origin' }];
+  assert.equal(stmt('origin', 'origin', null).child_stored, null);
+  assert.equal(edgesOf([stmt('child', 'child', null), stmt('origin', 'origin', null)], held)[0].child_stored, null);
+  assert.equal(edgesOf([stmt('child', 'child', true), stmt('origin', 'origin', null)], held)[0].child_stored, true);
+  assert.equal(edgesOf([stmt('child', 'child', true), stmt('origin', 'origin', false)], held)[0].child_stored, false);
 });
 
 test('secrets: a URL user and password, registered, leave no trace in a message', () => {
@@ -331,6 +357,61 @@ test('an engine whose DDL adds a column of its own: Legacy content_sha, whole ro
   const r = runKit(['--profile', 'clickhouse', '--only', 'legacy-content-sha-whole-rows', '--verbose'], withEngine('added-column.mjs'), 10 * 60 * 1000);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /columns the deployment adds, left out of the line \(§4\.8\): session_parts\.tenant, sessions\.tenant/);
+});
+
+test("an engine with a derived column (§3): from the session's current records it passes Redaction holds; kept after its message is removed, or taken from another session, it fails", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const ok = runKit(['--only', 'redaction-holds', '--verbose'], withEngine('derived-column.mjs'), 10 * 60 * 1000);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  // The column held planted values, so the pass proves the rule, not an empty column.
+  assert.match(ok.stdout, /columns the deployment adds \(§3\): sessions\.first_prompt; [1-9]\d* planted value\(s\) in them traced/, ok.stdout);
+  for (const [file, why] of [['derived-column-stale.mjs', /only a removed record of the session holds it/], ['derived-column-copied.mjs', /another session's record holds it/]]) {
+    const r = runKit(['--only', 'redaction-holds'], withEngine(file), 10 * 60 * 1000);
+    const ran = rows(r).filter((x) => x.status !== 'not run');
+    assert.ok(ran.length, r.stdout + r.stderr);
+    for (const x of ran) {
+      assert.equal(x.status, 'fail', `${file} ${x.column}: ${x.status}`);
+      assert.match(x.details.join(' '), /sessions\.first_prompt, a column the deployment adds: a current row holds a planted value/, `${file} ${x.column}`);
+      assert.match(x.details.join(' '), why, `${file} ${x.column}`);
+    }
+    assert.equal(r.status, 1);
+  }
+});
+
+test("vanish policies: an engine that declares ['kept'] gets the removed parts reported n/a, not fail; one that declares nothing is checked against both", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const NEED_REMOVED = ['engine: vanished, removed', 'engine: policy changed'];
+  const declared = runKit(['--only', 'absences-replay'], withEngine('vanish-kept-only.mjs'), 10 * 60 * 1000);
+  const ran = rows(declared).filter((x) => x.status !== 'not run');
+  assert.ok(ran.some((x) => x.part === 'engine: vanished, kept'), declared.stdout + declared.stderr);
+  for (const x of ran) {
+    if (NEED_REMOVED.includes(x.part)) {
+      assert.equal(x.status, 'n/a', `${x.part} ${x.column}`);
+      assert.match(x.notes.join(' '), /declares vanishPolicies \["kept"\]: it does not implement "removed"/);
+    } else assert.equal(x.status, 'pass', `${x.part} ${x.column}: ${x.details.join(' ')}`);
+  }
+  assert.equal(declared.status, 0, declared.stdout + declared.stderr);
+  // The same engine without its declaration: checked against both, so its removed parts fail.
+  const undeclared = runKit(['--only', 'absences-replay'], withEngine('vanish-kept-undeclared.mjs'), 10 * 60 * 1000);
+  const ran2 = rows(undeclared).filter((x) => x.status !== 'not run');
+  assert.ok(ran2.length, undeclared.stdout + undeclared.stderr);
+  for (const x of ran2) {
+    if (NEED_REMOVED.includes(x.part)) {
+      assert.equal(x.status, 'fail', `${x.part} ${x.column}`);
+      assert.match(x.notes.join(' '), /declares no vanishPolicies: checked against both/);
+    } else assert.equal(x.status, 'pass', `${x.part} ${x.column}: ${x.details.join(' ')}`);
+  }
+  assert.equal(undeclared.status, 1);
+});
+
+test('self-test: a replay that applies the current vanish policy, not the one each manifest records, fails Absences replay', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const r = runKit(['--self-test', '--only', 'absences-replay', '--fault', 'engine:replay-current-policy'], process.env, 10 * 60 * 1000);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const res = rows(r);
+  assert.ok(res.length, r.stdout);
+  for (const x of res) {
+    assert.equal(x.status, 'fail', x.column);
+    // The live state is right; the replay of the earlier, kept event is not.
+    assert.match(x.details.join(' '), /kept, pass 2 then removed, pass 3: sessions: 1 only in live, 1 only in replayed/, x.column);
+  }
 });
 
 test("an engine with a table of the consumer's own whose ts is not Nullable: No time partition leaves it alone", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
