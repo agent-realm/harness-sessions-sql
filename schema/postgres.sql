@@ -1,4 +1,4 @@
--- sessions-sql v1 (proposal): the PostgreSQL database profile, over the same logical keys as clickhouse.sql.
+-- sessions-sql v1: the PostgreSQL database profile, over the same logical keys as clickhouse.sql.
 -- Spec: 01-SESSIONS-SQL-SPEC.md, section 3.
 -- Status: loads in PostgreSQL 16 with the primary keys of spec section 3 (section 9).
 --
