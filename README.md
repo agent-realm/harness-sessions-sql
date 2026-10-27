@@ -40,11 +40,14 @@ standard of its own, beside two others:
 2. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql).
 3. **The examples:** [`examples/README.md`](examples/README.md): five runnable examples, from one session written by hand in SQL to the reference engine checked by the conformance kit.
 4. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, and how to run them against a ClickHouse or PostgreSQL target taken from the environment.
+5. **The tutorial:** [From an empty database to a conforming store](docs/tutorials/from-empty-database-to-conforming-store.md): one path through the examples, from loading the DDL to the conformance kit's verdict.
 
 ## Where next
 
 - [`examples/`](examples/README.md): run them all with `npm test` in `examples/`, against a disposable target.
+- [The tutorial](docs/tutorials/from-empty-database-to-conforming-store.md), then the guides in [`docs/`](docs/README.md): running the kit against your engine, reading the current state, adding a column.
 - [`docs/`](docs/README.md): the documentation index.
+- [`CHANGELOG.md`](CHANGELOG.md): what each version holds.
 - [`AGENTS.md`](AGENTS.md): conventions for agents and humans working on this repo.
 
 ## License
