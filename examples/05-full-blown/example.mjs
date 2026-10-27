@@ -144,7 +144,7 @@ await runExample({
     console.log(`the conformance kit, the reference engine, --profile ${profile}:`);
     const { code, report } = await runKit(profile);
     for (const l of kitLines(report, profile)) console.log(l);
-    console.log(`  ${report.verdict.line}`);
-    if (code !== 0) throw new Error(`the kit exited ${code}`);
+    console.log(`  the kit exited ${code}`);
+    if (code !== 0) throw new Error(`the kit exited ${code}: ${scrub(report.verdict.line)}`);
   },
 });

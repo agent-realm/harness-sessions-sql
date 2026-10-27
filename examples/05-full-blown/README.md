@@ -24,10 +24,12 @@ which checks the reference engine against the same target.
   records and link statements. Then the removed versions, the **edges** the engine resolved from
   the link statements (`owner = 'engine'`: the OpenCode child session and its parent's `task`
   call merge into one subagent edge, `stated_on` both, [§4.5]), and the size of the archive
-  ([§4.1]).
+  ([§4.1]). Its read manifests number one per read, 80 for 80 reads: the reference engine writes a
+  manifest even for a read that changes nothing, such as the unchanged reads of pass 2, which
+  §4.1 lets an engine omit.
 - **The conformance kit** ([§8]): the example runs [`conformance/run.mjs`](../../conformance/run.mjs)
   with `--profile` against the same target, with the reference engine (`SSQL_ENGINE` unset), and
-  prints one line per §8 item and the kit's verdict. The kit opens namespaces of its own; it never
+  prints one line per §8 item and the kit's exit code. The kit opens namespaces of its own; it never
   reads the example's. The two legacy items are ClickHouse database profile items, `n/a` on
   PostgreSQL. Database profile parity needs both profiles in one run, so a `--profile` run reports
   it `not run`: run `node conformance/run.mjs` with both targets set to check it.
@@ -47,22 +49,27 @@ which checks the reference engine against the same target.
 - A ClickHouse target (`SSQL_CH_URL`, with `SSQL_CH_USER` and `SSQL_CH_PASSWORD`), a PostgreSQL
   target (`SSQL_PG_URL`), or both, from the environment as the conformance kit takes them. Point
   them only at a disposable deployment: the kit creates and drops namespaces of its own there.
-- **The session adapters**, `@agent-realm/session-adapters` (`packages/session-adapters` of
-  [harness-skeleton][harness-skeleton]), named by `SSQL_ADAPTERS` as the kit names them. The example
-  reads the package's `fixtures/` folder, which a checkout has and a published package does not
-  ship ([§9]), so `SSQL_ADAPTERS` is a path to a checkout of the package, pinned to its release tag
-  once it has one:
+- **The session adapters**, `@agent-realm/session-adapters` 1.0.0 (`packages/session-adapters` of
+  [harness-skeleton][harness-skeleton]), named by `SSQL_ADAPTERS` as the kit names them. Two ways
+  to get them:
+  - **From source**, which this example needs: it reads the package's `fixtures/` folder, which a
+    checkout has and a published package does not ship ([§9]). Version 1.0.0 is harness-skeleton
+    commit `5ab0659`:
 
-  ```sh
-  git clone https://github.com/agent-realm/harness-skeleton
-  export SSQL_ADAPTERS=$PWD/harness-skeleton/packages/session-adapters
-  ```
+    ```sh
+    git clone https://github.com/agent-realm/harness-skeleton
+    git -C harness-skeleton checkout 5ab0659
+    export SSQL_ADAPTERS=$PWD/harness-skeleton/packages/session-adapters
+    ```
 
-  The package is not on npm yet. Once it is, `npm install @agent-realm/session-adapters` in
-  `conformance/` and `SSQL_ADAPTERS=@agent-realm/session-adapters` load the adapters by name (a
-  package name resolves from the kit's folder), which is enough for the kit's checks that need
-  no fixtures but not for this example. Without `SSQL_ADAPTERS`, or with a package that has no
-  `fixtures/`, the example is skipped (exit 3), with the reason.
+  - **From npm, once published:** `npm install @agent-realm/session-adapters@1.0.0` in
+    `conformance/`, and `SSQL_ADAPTERS=@agent-realm/session-adapters` (a package name resolves
+    from the kit's folder). That loads the adapters, which is enough for the kit's checks that
+    need no fixtures, but not for this example.
+
+  Without `SSQL_ADAPTERS`, or with a package that has no `fixtures/`, the example is skipped (exit
+  3), with the reason. The expected output below is 1.0.0's: the examples' test fails the example,
+  without running it, when `SSQL_ADAPTERS` names another version.
 - Node.js 24, and the kit's one dependency (`npm ci` in `conformance/`).
 
 The example creates a database (ClickHouse) or schema (PostgreSQL) of its own and drops it when it
@@ -88,6 +95,8 @@ To check an engine of your own instead of the reference engine, run the kit with
 
 The counts are those of session-adapters 1.0.0's fixtures; another version of the package can
 change them.
+
+<!-- session-adapters: 1.0.0 -->
 
 <!-- expected: clickhouse -->
 ```text
@@ -123,7 +132,7 @@ the conformance kit, the reference engine, --profile clickhouse:
   17. Null is unknown: pass
   18. Redaction holds: pass
   19. Database profile parity: not run
-  exit 0: 25 row(s) checked
+  the kit exited 0
 ```
 
 <!-- expected: postgres -->
@@ -160,7 +169,7 @@ the conformance kit, the reference engine, --profile postgres:
   17. Null is unknown: pass
   18. Redaction holds: pass
   19. Database profile parity: not run
-  exit 0: 22 row(s) checked
+  the kit exited 0
 ```
 
 [harness-skeleton]: https://github.com/agent-realm/harness-skeleton
