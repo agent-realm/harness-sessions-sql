@@ -1,4 +1,4 @@
-# sessions-sql — Specification
+# harness-sessions-sql — Specification
 
 **version:** v1
 **status:** the table shapes and semantics of v1, accepted. Under AGENTS.md rule 2, no table or
@@ -7,14 +7,14 @@ fixture tests back every §8 item through its reference engine, on both database
 memhouse's capture engine is the first production implementation, and these shapes will be
 reconciled against it (§9): under AGENTS.md rule 5, a correction that only adds lands in a v1.x, and
 any other in v2.
-**provides:** the `sessions-sql` mapping: how session records are kept in SQL.
+**provides:** the `harness-sessions-sql` mapping: how session records are kept in SQL.
 **consumes:**
 [`sessions-model`][sessions-model] v1.3 (the records) and
 [`sessions`][sessions] v1.3 (the seam), or any later v1.x. Its ClickHouse database profile uses common conventions:
 ReplacingMergeTree versioned by `rev` with an `is_deleted` flag, `DateTime64` in UTC, and a
 server-stamped `writer` column.
 
-`sessions-sql` defines how the records of `sessions-model` are stored as SQL rows. It covers:
+`harness-sessions-sql` defines how the records of `sessions-model` are stored as SQL rows. It covers:
 - the raw archive;
 - the entity tables for sessions, messages with their parts, usage, link statements, edges and
   lifecycle records;
@@ -35,7 +35,7 @@ A consumer of the `sessions` seam receives:
 - **normalised records**, which `derive` produces from those units;
 - **`live` key sets**, which say what currently exists.
 
-`sessions-sql` says where each of these lands and how the rows stay correct under the seam's
+`harness-sessions-sql` says where each of these lands and how the rows stay correct under the seam's
 guarantees:
 - replays are safe;
 - `derive` is pure;
@@ -236,7 +236,7 @@ rows, not exemptions.
 - **A partial last line is not a unit.** `read` holds it back until it is whole (sessions §3), so
   it has no row here: replaying the archive must give what `read` gave. A consumer that wants to
   keep a fragment that never completed (a harness that died mid-line) keeps it outside the
-  sessions-sql tables.
+  harness-sessions-sql tables.
 - **Two named exemptions in `session_units`** hold rows that are not an adapter's native units
   (the entity tables also exempt a third, `legacy`, §4.8). They are marked by
   their `adapter` value, in `session_units` and in the entity tables (§4.8):
@@ -449,8 +449,8 @@ explains a removal; it never replaces the removed version (or tombstone) of the 
 ### 4.8 Rows no adapter derived: `legacy`, `memhouse-bridge`, `memhouse-log`
 
 Three `adapter` values mark rows that a session adapter did not derive from native units. They
-keep a consumer's history in the sessions-sql tables while they cannot be re-derived.
-- **`legacy`:** a row converted from memhouse 0.18's database, written before sessions-sql. It has
+keep a consumer's history in the harness-sessions-sql tables while they cannot be re-derived.
+- **`legacy`:** a row converted from memhouse 0.18's database, written before harness-sessions-sql. It has
   no archive, so it is never re-derived. No adapter stated a version for it: its `adapter_ver` is
   the string `0`, as the full-row vectors below show.
   - **Its `host`** is the host/v0 value where the machine reported the pair `(old host id →
@@ -615,7 +615,7 @@ them.
 
 ## 8. Conformance
 
-A database conforms to `sessions-sql` v1 when every item below holds. An item marked
+A database conforms to `harness-sessions-sql` v1 when every item below holds. An item marked
 **(ClickHouse database profile)** applies to that database profile only, and does not apply to a
 PostgreSQL one.
 
@@ -720,7 +720,7 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
 
 **v1.** It maps the records of [sessions-model][sessions-model] v1.3 as the [sessions][sessions]
 v1.3 seam delivers them, and stays valid under any later v1.x. The fixtures
-are those of the session-adapters package (`packages/session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
+are those of the harness-session-adapters package (`packages/harness-session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/harness-session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
 its reviewed golden. A conformance run reads them from a checkout of the package, because a
 published package ships no `fixtures/`.
 
@@ -733,7 +733,7 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
 - every control in the self-test makes its check fail.
 
 **Production implementations.** memhouse's capture engine is the first. On 2026-10-27, with the kit
-of sessions-sql 96dcb3f (its kit code is unchanged since), memhouse's 0.20 line, still in
+of harness-sessions-sql 96dcb3f (its kit code is unchanged since), memhouse's 0.20 line, still in
 development, on ClickHouse 26.8:
 - every §8 item that applies to it and was run passes, except Crash-safe, whose remaining failures
   are the case that

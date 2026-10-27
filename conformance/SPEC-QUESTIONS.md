@@ -5,7 +5,7 @@ item could not be checked as it was written. For each: what the kit or the refer
 invented silently, and the question the specification should settle.
 
 **Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17, 29 and 30 (29 and 30
-came from v1's derived columns, §3); 6 and 18 belong to the session-adapters package. 19 to 28
+came from v1's derived columns, §3); 6 and 18 belong to the harness-session-adapters package. 19 to 28
 and 31 to 36 are open, as v1 does not settle them: 27 and 28 came from the kit's last review, 31
 from the first production engine's inferred edges, and 32 to 36 from the review of the examples
 (`examples/`) and the docs (`docs/`). Each answered item ends with its answer and the section that now
@@ -236,7 +236,7 @@ the answers can be read against them.
     an engine may declare more, and the item holds at each. How the kit sees an engine's cursor
     (`cursor()`, else session_sources) stays the kit's own convention (27).
 
-18. **The session-adapters package before npm.** `SSQL_ADAPTERS` is a path or a package name; a
+18. **The harness-session-adapters package before npm.** `SSQL_ADAPTERS` is a path or a package name; a
     published package does not ship `fixtures/`, which the engine checks need. Until the fixtures
     are published on their own, the kit needs a checkout.
 

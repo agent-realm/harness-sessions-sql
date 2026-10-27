@@ -41,11 +41,11 @@ All of them, checked against the expected output in their READMEs:
 cd examples
 SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=kit SSQL_CH_PASSWORD=… \
 SSQL_PG_URL=postgres://kit:…@localhost:5432/kit \
-SSQL_ADAPTERS=/path/to/harness-skeleton/packages/session-adapters \
+SSQL_ADAPTERS=/path/to/harness-skeleton/packages/harness-session-adapters \
   npm test
 ```
 
-`SSQL_ADAPTERS` names a checkout of the session-adapters package at version 1.0.0, harness-skeleton
+`SSQL_ADAPTERS` names a checkout of the harness-session-adapters package at version 1.0.0, harness-skeleton
 commit `5ab0659`: example 05 reads its `fixtures/`, and its expected output is that version's
 ([`05-full-blown/README.md`](05-full-blown/README.md) says how to get it).
 
@@ -55,14 +55,14 @@ prints exactly its README's expected output (the fenced block on the line after
 
 - **The READMEs' markers.** A marker that does not parse, in any case, an unknown profile, or a
   README whose profiles are not those the example runs on fails the example, on the profile it
-  concerns. An example that reads the session-adapters package (example 05) must name the version
-  its output is from in a line `<!-- session-adapters: <version> -->`; a missing or misspelled one
+  concerns. An example that reads the harness-session-adapters package (example 05) must name the version
+  its output is from in a line `<!-- harness-session-adapters: <version> -->`; a missing or misspelled one
   fails it, and so does running it with another version in `SSQL_ADAPTERS`.
 - **Interrupts.** It interrupts one example per profile while it holds namespaces open (example 05
   while the kit it runs is running too, or example 04 when 05 did not run), and checks that nothing
   it opened is left.
 - **The seal.** It checks the examples' seal ([`lib/records.mjs`](lib/records.mjs)) on records that
-  leave out members a seal fills in: against known answers computed with session-adapters 1.0.0's
+  leave out members a seal fills in: against known answers computed with harness-session-adapters 1.0.0's
   own seal, always, and against the package's seal itself when `SSQL_ADAPTERS` is set.
 
 `node test.mjs --only 01,03`, `--profile postgres` and `--allow-skip` narrow or relax a run. It
@@ -84,7 +84,7 @@ ever printed: every message goes through the kit's scrub
 An example exits 0 when it is done, 1 when it failed or could not drop a namespace it opened, 2
 for a usage error, and 3 when it is skipped because it cannot run here (example 05 without the
 session adapters' fixtures). `node example.mjs --about` prints, as one line of JSON, the profiles
-it runs on and whether it reads the session-adapters package.
+it runs on and whether it reads the harness-session-adapters package.
 
 ## Layout
 

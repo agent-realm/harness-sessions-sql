@@ -8,7 +8,7 @@
 //   node example.mjs                       every profile the example runs on that has a target
 //   node example.mjs --profile <profile>   that profile only: clickhouse or postgres
 //   node example.mjs --about               print, as one line of JSON, the profiles the example runs
-//                                          on and whether it reads the session-adapters package
+//                                          on and whether it reads the harness-session-adapters package
 //                                          (SSQL_ADAPTERS), and exit
 //
 // Without --profile, and with more than one profile to run, each profile's output follows a line
@@ -73,7 +73,7 @@ function parseArgs(argv) {
 
 // Run `run(ctx)` once per selected profile. `ctx`: { profile, target, namespace() }, where
 // namespace() opens a fresh namespace with schema/'s tables, dropped when this profile's run ends.
-// `sessionAdapters`: whether the example reads the session-adapters package, so its README names
+// `sessionAdapters`: whether the example reads the harness-session-adapters package, so its README names
 // the version its output is from (examples/test.mjs).
 export async function runExample({ profiles = PROFILES, sessionAdapters = false, run }) {
   let notDropped = 0;

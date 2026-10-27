@@ -106,7 +106,7 @@ const SELF_TEST = [
   ['git+ssh://git' + AT + 'bench' + H + 'alice/repo.git', 'home path with a user name', true],
   ['rsync://bench' + H + 'alice/data', 'home path with a user name', true],
   ['wss://example.com' + H + 'alice/socket', 'home path with a user name', false],
-  ['session-adapters' + AT + 'v1.1', 'e-mail address', false],
+  ['harness-session-adapters' + AT + 'v1.1', 'e-mail address', false],
   // Stand-ins and reserved names pass; the same shapes with a real-looking value or host do not.
   ["const KEY = '" + SK + "not-a-real-key-but-treated-as-one'", 'credential shape', false],
   ["const KEY = '" + SK + "Ab3dE5gH7jK9mN1pQ3rS5tU7'", 'credential shape', true],

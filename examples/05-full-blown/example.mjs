@@ -1,5 +1,5 @@
 // Example 05: full-blown. A consumer reads three small synthetic harness stores (copies of fixture
-// cases of the session-adapters package) through the real session adapters, over two passes; the
+// cases of the harness-session-adapters package) through the real session adapters, over two passes; the
 // reference engine writes what it reads into a fresh namespace; the example reads the current
 // state back; then the conformance kit (conformance/run.mjs) checks the reference engine against
 // the same target. See README.md.
@@ -17,14 +17,14 @@ import { scrub } from '../../conformance/lib/secrets.mjs';
 
 const KIT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'conformance', 'run.mjs');
 
-// The harness stores: fixture cases of the session-adapters package, each copied to a temporary
+// The harness stores: fixture cases of the harness-session-adapters package, each copied to a temporary
 // folder first, as the kit copies them (conformance/envelopes.mjs).
 const CASES = [['claude-code', 'basic'], ['codex', 'basic'], ['opencode', 'features']];
 
 async function sessionAdapters() {
   const { source, error } = await loadAdapters();
   if (!source) throw new Skip(error);
-  if (!source.fixtures) throw new Skip('SSQL_ADAPTERS names a session-adapters package with no fixtures/ folder (a published package ships none): name a checkout of it');
+  if (!source.fixtures) throw new Skip('SSQL_ADAPTERS names a harness-session-adapters package with no fixtures/ folder (a published package ships none): name a checkout of it');
   return source;
 }
 

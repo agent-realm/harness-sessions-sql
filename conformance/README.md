@@ -10,7 +10,7 @@ PostgreSQL schemas).
 npm install
 SSQL_CH_URL=http://localhost:8123 SSQL_CH_USER=… SSQL_CH_PASSWORD=… \
 SSQL_PG_URL=postgres://…@localhost:5432/… \
-SSQL_ADAPTERS=/path/to/harness-skeleton/packages/session-adapters \
+SSQL_ADAPTERS=/path/to/harness-skeleton/packages/harness-session-adapters \
 node run.mjs
 ```
 
@@ -25,7 +25,7 @@ Node.js 24. One dependency, `pg`; ClickHouse is spoken over its HTTP interface w
 | `SSQL_PG_URL` | a PostgreSQL connection URL |
 | `SSQL_PREFIX` | the deployment prefix of every table (spec §3, physical names); default `conf_` |
 | `SSQL_ENGINE` | the engine under test, a module path or package name; default the [reference engine](reference/engine.mjs) |
-| `SSQL_ADAPTERS` | the session-adapters package (`@agent-realm/session-adapters`, `packages/session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to a checkout of it, pinned to the package's release tag once it has one, or a package name |
+| `SSQL_ADAPTERS` | the harness-session-adapters package (`@agent-realm/harness-session-adapters`, `packages/harness-session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to a checkout of it, pinned to the package's release tag once it has one, or a package name |
 | `SSQL_TIMEOUT_MS` | how long one database request may take; default 300000 |
 
 A package name in `SSQL_ENGINE` or `SSQL_ADAPTERS` resolves from the kit's own folder (its

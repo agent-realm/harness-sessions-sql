@@ -1,10 +1,10 @@
-# sessions-sql
+# harness-sessions-sql
 
 **Status: v1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run it and does not pass every item yet.
 
 ## What it is
 
-sessions-sql is the reference for keeping agent-harness sessions in a database. It defines:
+harness-sessions-sql is the reference for keeping agent-harness sessions in a database. It defines:
 - which tables hold the records of **sessions-model v1**;
 - the keys of those tables;
 - how revisions and deletions are kept;
@@ -15,7 +15,7 @@ ClickHouse is the normative database profile. Postgres is a second database prof
 
 ## Why it exists
 
-Every agent harness keeps its sessions in its own format. sessions-sql was started on 2026-10-22
+Every agent harness keeps its sessions in its own format. harness-sessions-sql was started on 2026-10-22
 for two needs:
 - a harness's state and history must stay easy to extract, for memhouse first but not only;
 - there must be a reference for mapping session data into a database.

@@ -1,6 +1,6 @@
 # From an empty database to a conforming store
 
-One path through sessions-sql, in six steps: start a disposable database, load the DDL, write and
+One path through harness-sessions-sql, in six steps: start a disposable database, load the DDL, write and
 read rows by the read rules, archive raw units and rebuild from them, run an engine, and check it
 with the conformance kit. Each step runs one of the [examples](../../examples/README.md) and says
 what to look for. The examples' READMEs hold the full output, and the
@@ -99,14 +99,14 @@ Look for: generation 2 opening at the rewind, the removed versions of `m-3` and 
 
 [Example 05](../../examples/05-full-blown/) reads three fixture harness stores through the real
 session adapters, writes them with the reference engine, reads the current state back, and runs
-the conformance kit against the same target. It needs a checkout of the session-adapters package
+the conformance kit against the same target. It needs a checkout of the harness-session-adapters package
 at 1.0.0, named by `SSQL_ADAPTERS` (its README gives both ways to get the package); here, cloned
 beside this repository:
 
 ```sh
 git clone https://github.com/agent-realm/harness-skeleton ../harness-skeleton
 git -C ../harness-skeleton checkout 5ab0659
-export SSQL_ADAPTERS=$PWD/../harness-skeleton/packages/session-adapters
+export SSQL_ADAPTERS=$PWD/../harness-skeleton/packages/harness-session-adapters
 node examples/05-full-blown/example.mjs --profile clickhouse
 ```
 

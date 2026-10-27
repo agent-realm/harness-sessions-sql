@@ -1,7 +1,7 @@
 {
-  "name": "sessions-sql-examples",
+  "name": "harness-sessions-sql-examples",
   "version": "0.1.0",
-  "description": "The examples of sessions-sql, from one row written by hand to the reference engine checked by the conformance kit, run against a ClickHouse or PostgreSQL target taken from the environment",
+  "description": "The examples of harness-sessions-sql, from one row written by hand to the reference engine checked by the conformance kit, run against a ClickHouse or PostgreSQL target taken from the environment",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
