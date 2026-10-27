@@ -164,7 +164,7 @@ Each check has a **database** part, an **engine** part, or both, and each part i
 | 15 | No-op manifests | engine | the archive replayed with and without its no-op manifests (those of reads that change nothing in the fold, §4.1; left out by their whole identity) gives the same state |
 | 16 | Re-derive from the archive | engine | a replay with the kit's bumped adapters (next patch version, every usage record re-keyed) rewrites every record it produces at a higher `rev`, each row carrying the new `adapter_ver` exactly as the adapter states it, and physically deletes exactly the records it no longer produces |
 | 17 | Null is unknown | database, engine | null counters, flags, `exit_code`, `output_ref_bytes`, `output_len`, `child_stored` and `orig_sha256` read back null, and a part's own source and state survive beside its message's; then every such field of the broad scenario equals what the adapter emitted, every statement's `child_stored` included, every unit's `orig_sha256` is the unit's own or null, and a tool result whose newer version has no output reference keeps none |
-| 18 | Redaction holds | engine | on the three sentinel fixtures, no row holds a planted value (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6), and the values redacted on declared paths are in no table |
+| 18 | Redaction holds | engine | on the three sentinel fixtures, OpenCode's first user message (its text holds a planted value) deleted in a second pass: no row holds a planted value in the specification's columns (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6); a column the deployment adds (§3, derived columns) holds one only where a current record of the row's session holds it (in a removed version, the archive or the cursor: a record of the session, current or removed); and the values redacted on declared paths are in no table |
 | 19 | Database profile parity | engine | the same envelopes into ClickHouse and PostgreSQL give the same current `(identity, content_sha[, message_content_sha])` in every entity table, `legacy` rows left out (runs when both profiles are in the run) |
 
 Each check runs its item as §8 of the specification's v1 proposal words it, against the v1 DDL in
@@ -182,8 +182,8 @@ make it fail:
   versions, a removed version that rewrites its row, a null `ts` filled, no manifests or manifests
   only the engine's replay reads, a part sha computed without its null members, a chunk lost, a
   PostgreSQL upsert that keeps a column the new version lost, `adapter_ver` stored as an integer
-  encoding, a null `child_stored` written as true, a missing `orig_sha256` written as `''`, and so
-  on);
+  encoding, a null `child_stored` written as true, a missing `orig_sha256` written as `''`, a
+  derived column that keeps a removed message's text or takes another session's, and so on);
 - **DDL faults** are a faulty implementation DDL, supplied through the reference engine's
   `createTables` as any engine's would be: a key column dropped, a registry turned into a closed
   list, the host check removed or unanchored, a time partition, a non-Nullable `ts` or counter, an
@@ -194,13 +194,15 @@ tests add test engines ([`test/engines/`](test/engines/)), each a conforming dep
 must accept or a fault in an engine's own code the kit must catch:
 
 - accepted: one that stores large units in several chunks; one whose ClickHouse DDL prefixes a
-  sort key with `toDate(ts)`; one that adds a column of its own to two tables; one with a table of
-  its own beside the §3 tables; one that keeps its cursor in a table of its own and exposes it as
-  `cursor()`;
+  sort key with `toDate(ts)`; one that adds a column of its own to two tables; one whose DDL adds a
+  derived column (`sessions.first_prompt`) it computes from the session's current records; one
+  with a table of its own beside the §3 tables; one that keeps its cursor in a table of its own and
+  exposes it as `cursor()`;
 - caught or not proven: one with no DDL (self-check rows); one whose own DDL lacks the host check;
   one with no legacy SQL; one with no DDL and a wrong legacy SQL; one that hides its cursor and
   ignores its later crash points (not proven), and one that exposes it and ignores them (fails);
-  two whose errors quote a URL with a password the kit was never given, which it must not print.
+  one whose derived column keeps a removed message's text, and one whose derived column takes
+  another session's; two whose errors quote a URL with a password the kit was never given, which it must not print.
 
 ## Plugging in an engine
 
@@ -253,7 +255,9 @@ back pass by pass) and the source's current unit list. A read whose `from` is no
 position is stale and ignored, except a read from scratch, which moves only the position when it
 delivers the units the source holds and otherwise opens a generation. A re-run that reads other
 content than a crashed pass archived opens a generation of its own. Every PostgreSQL upsert writes
-the table's whole column list. Its `chunkBytes` option stores large units in several chunks. It
+the table's whole column list. Its `chunkBytes` option stores large units in several chunks, and
+its `firstPrompt` option keeps a derived column (spec §3), `sessions.first_prompt`, recomputed
+from the session's current rows after every pass and written as a new version where it changed. It
 stores `adapter_ver` as the adapter states it, keeps a statement's null `child_stored`, and writes
 `orig_sha256` null for a unit without one. The choices it had to make where v0 left one open, the
 v1 answers, and the questions still open are in [`SPEC-QUESTIONS.md`](SPEC-QUESTIONS.md).

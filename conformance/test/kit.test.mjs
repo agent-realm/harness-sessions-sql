@@ -65,6 +65,16 @@ test('DDL faults: each finds its pattern in the profiles it applies to', () => {
   }
 });
 
+test('a derived column (§3): first_prompt lands in sessions after title, and is no column of the specification', () => {
+  for (const profile of ['clickhouse', 'postgres']) {
+    const sessions = ddlStatements(profile, { qualify: (t) => t, transforms: [reference.addFirstPromptColumn] }).find((s) => s.startsWith('CREATE TABLE sessions'));
+    assert.match(sessions, /\n\s+title\s[^\n]*\n\s+first_prompt\s/, profile);
+    const spec = ddlColumns(profile, 'sessions', { materialized: true });
+    assert.ok(!spec.includes('first_prompt'), profile);
+    assert.ok(spec.includes('writer'), `${profile}: the server-stamped writer is a column of the specification`);
+  }
+});
+
 test('a ClickHouse key splits at its top-level commas only', () => {
   assert.deepEqual(keyElements("toDate(ts), host, toStartOfInterval(ts, INTERVAL 1 day), 'a,b', part_id"),
     ['toDate(ts)', 'host', 'toStartOfInterval(ts, INTERVAL 1 day)', "'a,b'", 'part_id']);
@@ -347,6 +357,24 @@ test('an engine whose DDL adds a column of its own: Legacy content_sha, whole ro
   const r = runKit(['--profile', 'clickhouse', '--only', 'legacy-content-sha-whole-rows', '--verbose'], withEngine('added-column.mjs'), 10 * 60 * 1000);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /columns the deployment adds, left out of the line \(§4\.8\): session_parts\.tenant, sessions\.tenant/);
+});
+
+test("an engine with a derived column (§3): from the session's current records it passes Redaction holds; kept after its message is removed, or taken from another session, it fails", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  const ok = runKit(['--only', 'redaction-holds', '--verbose'], withEngine('derived-column.mjs'), 10 * 60 * 1000);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  // The column held planted values, so the pass proves the rule, not an empty column.
+  assert.match(ok.stdout, /columns the deployment adds \(§3\): sessions\.first_prompt; [1-9]\d* planted value\(s\) in them traced/, ok.stdout);
+  for (const [file, why] of [['derived-column-stale.mjs', /only a removed record of the session holds it/], ['derived-column-copied.mjs', /another session's record holds it/]]) {
+    const r = runKit(['--only', 'redaction-holds'], withEngine(file), 10 * 60 * 1000);
+    const ran = rows(r).filter((x) => x.status !== 'not run');
+    assert.ok(ran.length, r.stdout + r.stderr);
+    for (const x of ran) {
+      assert.equal(x.status, 'fail', `${file} ${x.column}: ${x.status}`);
+      assert.match(x.details.join(' '), /sessions\.first_prompt, a column the deployment adds: a current row holds a planted value/, `${file} ${x.column}`);
+      assert.match(x.details.join(' '), why, `${file} ${x.column}`);
+    }
+    assert.equal(r.status, 1);
+  }
 });
 
 test("an engine with a table of the consumer's own whose ts is not Nullable: No time partition leaves it alone", { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {

@@ -145,4 +145,6 @@ export const FAULT_NOTES = {
   'engine:encode-adapter-ver': 'adapter_ver stored as an integer encoding of a.b.c',
   'engine:child-stored-default': "a statement's null child_stored written as true",
   'engine:orig-sha-zero': "a unit's missing orig_sha256 written as '' instead of null",
+  'engine:derived-stale': "a derived column (sessions.first_prompt) computed once and never again, so it keeps a removed message's text",
+  'engine:derived-other-session': "a derived column (sessions.first_prompt) taken from another session's records",
 };

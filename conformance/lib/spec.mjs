@@ -121,8 +121,8 @@ export const LEGACY_LINE_EXCLUDES = {
 };
 
 // The columns of a table in the committed DDL of a profile (schema/<profile>.sql), in order,
-// without constraints and without MATERIALIZED columns.
-export function ddlColumns(profile, table) {
+// without constraints, and without MATERIALIZED columns unless `materialized` is set.
+export function ddlColumns(profile, table, { materialized = false } = {}) {
   const text = fs.readFileSync(path.join(path.dirname(SPEC_PATH), 'schema', `${profile}.sql`), 'utf8')
     .split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
   const start = text.search(new RegExp(`CREATE TABLE ${table}\\b`));
@@ -131,7 +131,7 @@ export function ddlColumns(profile, table) {
   const cols = [];
   for (const line of body) {
     const m = line.match(/^\s{2,}([a-z_0-9]+)\s+(.*)$/);
-    if (!m || m[1] === 'CONSTRAINT' || /\bMATERIALIZED\b/.test(m[2]) || m[1] === 'PRIMARY') continue;
+    if (!m || m[1] === 'CONSTRAINT' || (!materialized && /\bMATERIALIZED\b/.test(m[2])) || m[1] === 'PRIMARY') continue;
     cols.push(m[1]);
   }
   return cols;

@@ -520,20 +520,34 @@ export function twoHosts(adapters) {
 
 // The sentinel-secret fixtures. Each plants a fake secret on declared redaction paths and the
 // same or another fake value in free text, which no path covers (sessions-model §4 rule 6). The
-// kit finds the planted values by their fixture spelling.
+// kit finds the planted values by their fixture spelling. Pass 1 reads all three. Pass 2 reads
+// OpenCode again after its first user message, whose text holds a planted value, is deleted (a
+// delta read's gone keys): that value is then held by a removed record of the session and by no
+// current one, so a column derived from the message (spec §3) must no longer hold it.
 export const SENTINEL_CASES = [['goose', 'conformance-goose-sentinel'], ['zed', 'sentinel'], ['opencode', 'sentinel']];
 const SENTINEL_RE = /sentinel-[0-9a-z]+-not-a-secret|OCSENTINEL-[A-Za-z0-9-]+/g;
 
 export function sentinels(adapters) {
-  const pass = [];
+  const passes = [[], []];
   const values = new Set();
+  let removed = null;
   for (const [harness, caseName] of SENTINEL_CASES) {
     withFixture(adapters, harness, caseName, {}, (fx) => {
       for (const m of fx.inputText().matchAll(SENTINEL_RE)) values.add(m[0]);
-      pass.push(...new Reader(adapters.adapterFor(harness), storeOf(fx, HOST_A)).pass());
+      const r = new Reader(adapters.adapterFor(harness), storeOf(fx, HOST_A));
+      passes[0].push(...r.pass());
+      if (harness !== 'opencode') return;
+      const db = path.relative(fx.dir, fx.harnessPath);
+      const [msg] = fx.query(db, "SELECT id, session_id FROM message WHERE json_extract(data, '$.role') = 'user' ORDER BY time_created, id LIMIT 1");
+      if (!msg) throw new Error('opencode/sentinel: no user message found');
+      const text = fx.query(db, "SELECT json_extract(data, '$.text') AS text FROM part WHERE message_id = ? AND json_extract(data, '$.type') = 'text'", [msg.id]).map((p) => p.text).join('\n');
+      if (!text.match(SENTINEL_RE)) throw new Error('opencode/sentinel: the first user message holds no planted value in its text');
+      removed = { session_id: msg.session_id, message_id: msg.id };
+      fx.sql(db, [['DELETE FROM part WHERE message_id = ?', [msg.id]], ['DELETE FROM message WHERE id = ?', [msg.id]]]);
+      passes[1].push(...r.pass());
     });
   }
-  return { name: 'sentinels', passes: [pass], sentinels: [...values] };
+  return { name: 'sentinels', passes, sentinels: [...values], removed };
 }
 
 // The zero-part assistant message of opencode/edits (an assistant row with no parts).

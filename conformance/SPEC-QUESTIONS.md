@@ -4,9 +4,9 @@ Points where `01-SESSIONS-SQL-SPEC.md` (v0) was ambiguous, or where a §8 item c
 as it was written. For each: what the kit or the reference engine did, so nothing here was
 invented silently, and the question the specification should settle.
 
-**Status against the v1 proposal of the specification.** v1 answers 1 to 5 and 7 to 17; 6 and 18
-belong to the session-adapters package. 19 to 28 are open: v1 does not settle them, and 27 and 28
-came from the kit's last review. Each answered item ends with its answer and the section that now
+**Status against the v1 proposal of the specification.** v1 answers 1 to 5, 7 to 17 and 29; 6 and
+18 belong to the session-adapters package. 19 to 28 and 30 are open: v1 does not settle them, 27
+and 28 came from the kit's last review, and 29 and 30 from v1's derived columns (§3). Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so
 the answers can be read against them.
 
@@ -33,6 +33,8 @@ the answers can be read against them.
 | 19 to 26 | open | none |
 | 27 | open | none |
 | 28 | open (a kit convention) | none |
+| 29 | §3 Derived columns, §8 Redaction holds | Redaction holds judges a column the deployment adds against the records of the row's session; a second pass removes a message that holds a planted value; two faults and three test engines |
+| 30 | open | none: the kit takes principle 3 for a removed version's added columns |
 
 ## Checks that cannot run as §8 words them
 
@@ -344,3 +346,41 @@ the answers can be read against them.
     file, and the right to create schemas in the database `kit`, where the kit makes and drops a
     schema per check. *Question:* is a non-superuser role worth that setup cost, for a throwaway
     container?
+
+## Columns a deployment adds
+
+29. **A derived column (§3, §4.8, §8 Redaction holds).** §4.8 leaves "any column a deployment adds"
+    out of a legacy line, so a deployment may add columns, but nothing said what they may hold.
+    Redaction holds traced every column of a row to the unit or record the row was written from,
+    so a derived column that copies a session's own free text (`sessions.first_prompt`, the text of
+    its first user message) failed, though it held nothing the session's records do not hold: the
+    session record does not hold its messages' text. *Question:* may a deployment add derived
+    columns, and from what may they take their values?
+
+    *Answered (§3 Derived columns, §8 Redaction holds):* a deployment may add derived columns to
+    §3 tables. A derived column holds only values taken from its own session's records, never
+    another session's, and the redaction rules hold for it; it is recomputed when a record it
+    copies is revised, removed or forgotten, and never keeps a value the session's current records
+    no longer hold; it never enters a key or a `content_sha`. Redaction holds now traces this
+    specification's columns of a row to the unit or record it was written from, as before, and a
+    column the deployment adds to the records of the row's session: in the current state, its
+    current records. The sentinel scenario gained a second pass that deletes OpenCode's first user
+    message, whose text holds a planted value. The controls are the faults `engine:derived-stale`
+    (the column keeps a removed message's text) and `engine:derived-other-session` (it takes the
+    next session's), and the test engines `derived-column.mjs` (accepted),
+    `derived-column-stale.mjs` and `derived-column-copied.mjs` (caught).
+
+30. **A derived column in a row that is history (§2 principles 1 and 3, §3 Derived columns).** §3
+    says a derived column "never keeps a value the session's current records no longer hold: not a
+    removed message's text". Principle 3 makes a removed version "a full copy of its last row", and
+    Removed equals not live checks it column by column, a column the deployment adds included; the
+    archive is append-only (principle 1), so a derived column on a unit row is never recomputed. A
+    derived column on `session_parts` that copies a part's text (a search column, say) cannot meet
+    both readings in a removed version: copied, it keeps the removed message's text; recomputed, it
+    is not a copy of the last row. *The kit checks* a column the deployment adds against the
+    session's current records in the current state (an entity row, not removed), and against the
+    session's records, current or removed, in a removed version, a unit row and the cursor: never
+    another session's, never a redacted value. *Question:* is a derived column in a removed version
+    (and in the archive) a copy of the row it had, or recomputed from the current records?
+
+    *Open:* v1 does not settle it.
