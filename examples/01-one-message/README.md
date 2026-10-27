@@ -16,13 +16,17 @@ hostname as `host`.
 - **With `argMax`, the filter goes in `HAVING`.** `argMax(removed, rev)` is the flag of the
   latest version of a key, which is the one that decides. Once the message leaves `live` and gets
   a removed version (a full copy of its last row at a higher `rev`, `removed = 1`: [§2],
-  principle 3), the `HAVING` read shows no message, while the same filter in `WHERE` drops the
-  removed version before `argMax` picks one and brings the older version back as if it were
-  current.
+  principle 3), the `HAVING` read of the table shows no message. The same filter in `WHERE` drops
+  the removed version before `argMax` picks one, so it brings the older version back as if it were
+  current, but only while the two versions sit in separate, unmerged parts: once a merge drops the
+  older version, it shows nothing. On a real table the wrong answer comes and goes ([§6]: without
+  `FINAL`, every `rev` that has not yet merged away is visible); `FINAL` and `HAVING` are what is
+  safe. So the example compares the two filters on the two versions written out inline
+  (ClickHouse's `values` table function), which no merge changes.
 - `host` is a host/v0 value (here of the synthetic machine id `0e0e0e0e0e0e4e0e8e0e0e0e0e0e0e01`),
   never a hostname: the DDL's `host_form` constraint refuses `my-laptop` ([§2], principle 2). The
-  example checks that the refusal is the constraint's (ClickHouse code 469), and writes the same
-  row with a host/v0 value as a control, which is accepted.
+  example checks that the refusal is that constraint's (ClickHouse code 469, naming `host_form`),
+  and writes the same row with a host/v0 value as a control, which is accepted.
 
 The rows' shas are stand-ins of the right length (`repeat('a', 64)`): a writer computes each
 `content_sha` from its record ([§4]), as [example 03](../03-records-to-rows/) does.
@@ -83,9 +87,11 @@ its message, current state, read with argMax:
   m-1         0        Say hello.    1
 after the removal, read with argMax and the filter in HAVING (no message is current):
   (no rows)
-after the removal, the filter in WHERE instead (wrong, rev 1 comes back):
-  message_id  part_id  current_text  current_rev
-  m-1         0        Say hello.    1
+the two versions of m-1 inline, the filter in HAVING (no message is current):
+  (no rows)
+the same two versions, the filter in WHERE (wrong, rev 1 comes back):
+  message_id  current_text  current_rev
+  m-1         Say hello.    1
 a session whose host is a hostname: refused
 the same row with a host/v0 value is accepted, the sessions now:
   session_id         title        host

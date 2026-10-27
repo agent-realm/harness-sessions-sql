@@ -72,20 +72,32 @@ FROM session_parts
 GROUP BY host, harness, harness_path, session_id, incarnation, message_id, part_id
 HAVING argMax(is_deleted, rev) = 0 AND argMax(removed, rev) = 0;
 
--- With the filter in WHERE instead, it drops the removed version before argMax picks one, so the
--- older version comes back as if it were current: wrong.
+-- Why HAVING. Until a merge collapses them, the table holds both versions of m-1: rev 1, and its
+-- removed version, rev 2. A filter in WHERE drops the removed version before argMax picks one, so
+-- while the two sit in separate parts it brings rev 1 back as if it were current; once a merge
+-- has dropped rev 1, it shows nothing. On a real table the wrong answer comes and goes (spec
+-- section 6: without FINAL, every rev not yet merged away is visible). So the comparison below
+-- runs on the two versions written out inline, which no merge changes.
 
--- @ after the removal, the filter in WHERE instead (wrong, rev 1 comes back)
-SELECT message_id, part_id, argMax(text, rev) AS current_text, max(rev) AS current_rev
-FROM session_parts
+-- @ the two versions of m-1 inline, the filter in HAVING (no message is current)
+SELECT message_id, argMax(text, rev) AS current_text, max(rev) AS current_rev
+FROM values('message_id String, text String, rev UInt64, is_deleted UInt8, removed UInt8',
+            ('m-1', 'Say hello.', 1, 0, 0), ('m-1', 'Say hello.', 2, 0, 1))
+GROUP BY message_id
+HAVING argMax(is_deleted, rev) = 0 AND argMax(removed, rev) = 0;
+
+-- @ the same two versions, the filter in WHERE (wrong, rev 1 comes back)
+SELECT message_id, argMax(text, rev) AS current_text, max(rev) AS current_rev
+FROM values('message_id String, text String, rev UInt64, is_deleted UInt8, removed UInt8',
+            ('m-1', 'Say hello.', 1, 0, 0), ('m-1', 'Say hello.', 2, 0, 1))
 WHERE is_deleted = 0 AND removed = 0
-GROUP BY host, harness, harness_path, session_id, incarnation, message_id, part_id;
+GROUP BY message_id;
 
 -- A key's host is a host/v0 value; both profiles refuse any other form (spec section 2,
 -- principle 2): here ClickHouse's host_form constraint refuses a hostname, and the same row with
 -- a host/v0 value, the control, is accepted.
 
--- @error a session whose host is a hostname
+-- @error(host_form) a session whose host is a hostname
 INSERT INTO sessions
     (host, harness, harness_path, session_id, incarnation,
      title, state, reuse, ts_source,
