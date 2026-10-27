@@ -1,14 +1,14 @@
 # Questions for the specification
 
-Points where `01-SESSIONS-SQL-SPEC.md` (v0) was ambiguous, or where a §8 item could not be checked
-as it was written. For each: what the kit or the reference engine did, so nothing here was
+Points where `01-SESSIONS-SQL-SPEC.md` was ambiguous, first in its v0 and now in v1, or where a §8
+item could not be checked as it was written. For each: what the kit or the reference engine did, so nothing here was
 invented silently, and the question the specification should settle.
 
-**Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17, 29 and 30; 6 and
-18 belong to the session-adapters package. 19 to 28 and 31 to 34 are open: v1 does not settle them, 27
-and 28 came from the kit's last review, 29 and 30 from v1's derived columns (§3), 31 from
-the first production engine's inferred edges, and 32 to 34 from the review of the examples
-(`examples/`). Each answered item ends with its answer and the section that now
+**Status against v1 of the specification.** v1 answers 1 to 5, 7 to 17, 29 and 30 (29 and 30
+came from v1's derived columns, §3); 6 and 18 belong to the session-adapters package. 19 to 28
+and 31 to 35 are open, as v1 does not settle them: 27 and 28 came from the kit's last review, 31
+from the first production engine's inferred edges, and 32 to 35 from the review of the examples
+(`examples/`) and the docs (`docs/`). Each answered item ends with its answer and the section that now
 holds it, and each open one says so. The questions stay as they were asked, so
 the answers can be read against them.
 
@@ -38,9 +38,10 @@ the answers can be read against them.
 | 29 | §3 Derived columns, §8 Redaction holds | Redaction holds judges a column the deployment adds against the records of the row's session; a second pass removes a message that holds a planted value; two faults and three test engines |
 | 30 | §2 principles 1 and 3, §3 Derived columns | none: the kit already judges history rows against the session's records, current or removed; forgotten content is not checked until an engine honours forget notices |
 | 31 | open (v1.x) | none |
-| 32 | open | none: example 01 reads with `HAVING` |
+| 32 | open | none (example 01 shows the `HAVING` read) |
 | 33 | open | none |
-| 34 | open | none: example 03 leaves such a total null |
+| 34 | open | none (example 03 leaves such a total null) |
+| 35 | open | none (the kit judges such a column as it judges a derived one) |
 
 ## Checks that cannot run as §8 words them
 
@@ -451,10 +452,29 @@ the answers can be read against them.
     is false. Read literally, a null `input_includes_cache` is not false, so the total input is
     `input` alone. But §4.4 also says a null flag means the adapter has nothing that establishes
     the split, and sessions-model §2.4 defines the totals only for a true and a false flag. The
-    flags are null for most harnesses (sessions-model §2.4's table). Also unstated: the total when
-    the flag is false and `cache_read` or `cache_write` is null. *The examples:* example 03 leaves
-    the total null (unknown) in both cases, a choice of its own; its records set both flags.
-    *Question:* is a total with a null flag `input` (or `output`) alone, unknown, or something a
-    reader must not compute; and is a null counter under a false flag zero or unknown?
+    flags are null for most harnesses (sessions-model §2.4's table). Also unstated: the total input
+    when `input_includes_cache` is false and `cache_read` or `cache_write` is null, and the total
+    output when `output_includes_reasoning` is false and `reasoning` is null. *The examples:*
+    example 03 leaves the total null (unknown) in these cases, a choice of its own; its records set
+    both flags. *Question:* is a total with a null flag `input` (or `output`) alone, unknown, or
+    something a reader must not compute; and is a null counter under a false flag zero or unknown?
+
+    *Open:* v1 does not settle it.
+
+## Columns a deployment adds, beyond derived ones
+
+35. **A column that is not derived (§3, §4.8, §8 Redaction holds).** §3's Derived columns lets a
+    deployment add derived columns, which hold "only values taken from that session's own records"
+    and add "no data those records do not have". The specification also expects columns that are
+    not derived: §4.8 leaves "any column a deployment adds" out of a legacy row's line, and §3 keeps
+    a consumer's first-seen time "in a column of its own", a value no record holds. A tenant name is
+    another. But §8 Redaction holds reads a column a deployment adds as "(§3, derived columns)", and
+    nothing else says what such a column may hold or where it may not appear. *The kit* judges every
+    column a deployment adds as it judges a derived one: Redaction holds lets it hold a planted value
+    only where a record of the row's session holds it, and a column holding the deployment's own
+    value, such as `tenant`, passes (the test engine `added-column.mjs`; `docs/guides/` relies on
+    this reading for its worked `tenant` column). *Question:* may a deployment add columns that are
+    not derived, and under which rules: out of every key and `content_sha`, as a derived column is,
+    and holding no other session's values and no redacted value?
 
     *Open:* v1 does not settle it.
