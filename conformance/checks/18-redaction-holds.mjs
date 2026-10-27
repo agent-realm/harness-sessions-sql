@@ -1,10 +1,11 @@
-// §8: "Redaction holds: the sentinel-secret fixtures leave no sentinel value in any table."
+// §8: "Redaction holds: on the sentinel-secret fixtures, no value the adapter redacted on a
+// declared redaction path (sessions-model §4) is in any table, and no row holds a planted value
+// that the unit or record it was written from did not hold. Free text an adapter keeps on purpose
+// (sessions-model §4 rule 6) is the adapter's contract, not storage's."
 //
 // The package's sentinel fixtures (goose/conformance-goose-sentinel, zed/sentinel,
 // opencode/sentinel) plant fake secrets on declared redaction paths, and, on purpose, the same or
-// another fake value in free text, which no path covers and which an adapter keeps
-// (sessions-model §4 rule 6). Read literally, no table could pass; the check holds the engine to
-// what the item is for (SPEC-QUESTIONS.md):
+// another fake value in free text, which no path covers and which an adapter keeps. The check:
 // - no row of any table holds a planted value unless the unit or record it was written from holds
 //   it too: an engine never puts back what the adapter redacted, and never copies a value into a
 //   row of its own (a manifest, a cursor, an edge);

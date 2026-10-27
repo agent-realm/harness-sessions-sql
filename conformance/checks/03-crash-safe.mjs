@@ -1,5 +1,7 @@
-// §8: "Crash-safe: killing the pass between the archive write and the cursor write, then
-// re-running it, gives equal row counts and equal current state."
+// §8: "Crash-safe: killing the pass at the minimum crash point, right after the archive write
+// and before the cursor write, then re-running it, gives equal row counts and equal current
+// state. An engine may declare further crash points (after its entity writes, its removed
+// versions, its edges), and the item holds at each of them too."
 //
 // 1. Every crash point, every pass. A clean run of the rewind scenario is the reference. For each
 //    crash point (`archive`, right after the archive write, always; and every later point the

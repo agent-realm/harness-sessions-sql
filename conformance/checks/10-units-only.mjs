@@ -2,7 +2,8 @@
 // adapter's read emitted, unless its adapter names an exemption of §4.8. Read manifests (§4.1) are
 // normal rows, outside this check. Each entity record is one an adapter derived, unless its
 // adapter names an exemption of §4.8. Engine-owned edges (§4.5, owner = 'engine') are normal rows,
-// outside this check."
+// outside this check. Neither manifests nor engine edges are exemptions, so every replay check
+// applies to them."
 //
 // The partial scenario: pass 1 reads a file whose last line is cut in half (`read` holds it back),
 // pass 2 reads it whole; then the broad scenario.

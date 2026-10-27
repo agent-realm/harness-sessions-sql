@@ -1,7 +1,9 @@
 // §8: "Absences replay: a still-listed source reset to empty, a vanished source handled as
 // "policy": "kept", a vanished source handled as "policy": "removed", and a delta read's gone
 // keys, each replayed from session_units alone (no entity table, no cursor), give the same current
-// state as the live pass, removed versions included."
+// state as the live pass, with the adapter-owned rows' removed versions. Replay rebuilds the
+// current edges, not the removed versions of edges that ended: it folds each session alone, and
+// the order of passes across sessions is not archived."
 //
 // The absences scenario holds the four cases in pass 2. An engine's live state and its own replay
 // can agree and both be wrong (a "kept" source handled as removed in both), and a replay can read

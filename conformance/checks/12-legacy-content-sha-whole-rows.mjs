@@ -1,14 +1,18 @@
-// §8: "Legacy content_sha, whole rows: for each of §4.8's full-row vectors, the conversion of that
-// row gives that line and that content_sha."
+// §8: "Legacy content_sha, whole rows (ClickHouse database profile), in two halves, for each of
+// §4.8's full-row vectors: the database half: the vector's fields, loaded by column name into the
+// deployed table, format back in this specification's DDL order into that line and that
+// content_sha; the conversion half: the implementation's conversion of that row gives that line
+// and that content_sha. The implementation proves it with its own known-answer tests, and its
+// conformance report names them; v1 defines no conversion interface for a conformance run."
 //
-// The vectors are read from §4.8. The kit cannot run an implementation's conversion of a memhouse
-// 0.18 database (it has no such input); what it proves is what the deployment owns: each vector's
-// fields, named by the specification's DDL order (schema/clickhouse.sql as committed) and loaded
-// into the deployed table by name, format back, in the deployed table's own column order, into the
-// same line and the same sha. A deployed DDL whose order or types differ gives another line. A
-// column the deployment adds is left out of the line, as §4.8 says ("and any column a deployment
-// adds"): the line's columns are the specification DDL's, in the order the deployed table has them.
-// On PostgreSQL the item does not apply (see the line format check).
+// The vectors are read from §4.8. The kit runs the database half: each vector's fields, named by
+// the specification's DDL order (schema/clickhouse.sql as committed) and loaded into the deployed
+// table by name, format back, in the deployed table's own column order, into the same line and
+// the same sha. A deployed DDL whose order or types differ gives another line. A column the
+// deployment adds is left out of the line, as §4.8 says ("and any column a deployment adds"): the
+// line's columns are the specification DDL's, in the order the deployed table has them. The
+// conversion half is the implementation's own known-answer tests, which the report notes. On
+// PostgreSQL the item does not apply (see the line format check).
 //
 // Two parts, so each is judged by what it tests:
 // - database: the deployed DDL, formatted through §4.8's own expression. Without the engine's DDL
@@ -22,7 +26,7 @@ import { sha256 } from '../lib/jcs.mjs';
 import { verdict, na, skip } from '../lib/result.mjs';
 
 export const NO_LEGACY_SQL = 'the engine supplies no legacy SQL (legacySha): the item proves the implementation\'s SQL, so it is not checked on §4.8\'s own expression';
-const NOT_CLICKHOUSE = '§4.8: a legacy row exists only in the ClickHouse database its conversion ran in, and its line is ClickHouse TabSeparated';
+const NOT_CLICKHOUSE = 'a ClickHouse database profile item (§8): a legacy row exists only in a ClickHouse database profile, and its line is ClickHouse TabSeparated (§4.8)';
 
 export default {
   id: 'legacy-content-sha-whole-rows',
@@ -85,7 +89,7 @@ async function wholeRows(ns, legacySha, through) {
     if (rows[0].line !== v.line) problems.push(`${label}: through ${through}, the stored row formats as another line (${firstDiff(rows[0].line, v.line)})`);
     if (rows[0].sha !== v.sha256) problems.push(`${label}: through ${through}, sha ${rows[0].sha}, §4.8 says ${v.sha256}`);
   }
-  return verdict(problems, [`${vectors.length} full-row vectors from §4.8, stored and formatted back in DDL order through ${through}`, ...(added.size ? [`columns the deployment adds, left out of the line (§4.8): ${[...added].join(', ')}`] : [])]);
+  return verdict(problems, [`the database half: ${vectors.length} full-row vectors from §4.8, stored and formatted back in DDL order through ${through}`, "the conversion half is the implementation's own known-answer tests, named in its conformance report (§8)", ...(added.size ? [`columns the deployment adds, left out of the line (§4.8): ${[...added].join(', ')}`] : [])]);
 }
 
 function firstDiff(a, b) {
