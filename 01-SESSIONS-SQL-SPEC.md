@@ -699,7 +699,7 @@ catch. Its reference engine implements §5 for both database profiles. On 2026-1
 DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
 - the reference engine passes every §8 item on both database profiles, except the two legacy items
   on PostgreSQL, which do not apply there (§8);
-- each of the self-test's 54 controls makes its check fail.
+- every control in the self-test makes its check fail.
 
 **Production implementations.** memhouse's capture engine (0.20) is the first. Its run of the kit
 is recorded here when it has one. Until then no production implementation has passed the kit: the
