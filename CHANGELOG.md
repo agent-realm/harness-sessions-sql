@@ -4,10 +4,10 @@ All notable changes to harness-sessions-sql are recorded here. The format follow
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers match the
 specification's: the first release, 1.0.0, is its v1.
 
-## [Unreleased]
+## [1.0.1] - 2026-10-28
 
-- **1.0.1: the specification is renamed harness-sessions-sql**, with its repository, and cites the
-  session adapters by their published name, `@agent-realm/harness-session-adapters`
+- **The specification is renamed harness-sessions-sql**, with its repository, and cites the
+  session adapters by their package name, `@agent-realm/harness-session-adapters`
   (`packages/harness-session-adapters` in harness-skeleton). Text only: no table, column, key or
   check changes. The SQL identifiers, the specification's file name (`01-SESSIONS-SQL-SPEC.md`), the
   conformance environment variables (`SSQL_*`) and the kit's database prefix (`ssql_conf_`) keep
@@ -41,5 +41,5 @@ of memhouse, the first production implementation, is in [§9](01-SESSIONS-SQL-SP
   the kit and the reviews raised against the specification, each with what the kit does about it;
   19 to 28 and 31 to 36 are open in v1.
 
-[Unreleased]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.0...HEAD
+[1.0.1]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/agent-realm/harness-sessions-sql/releases/tag/v1.0.0

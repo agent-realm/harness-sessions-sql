@@ -722,7 +722,7 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
 v1.3 seam delivers them, and stays valid under any later v1.x. The fixtures
 are those of the harness-session-adapters package (`packages/harness-session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/harness-session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
 its reviewed golden. A conformance run reads them from a checkout of the package, because a
-published package ships no `fixtures/`.
+package as packed for npm ships no `fixtures/`.
 
 **The conformance kit** (`conformance/`) runs every §8 item against a ClickHouse or PostgreSQL
 target taken from the environment, and its self-test holds each check to the faults it exists to
