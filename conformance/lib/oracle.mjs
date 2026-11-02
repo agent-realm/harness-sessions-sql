@@ -15,14 +15,25 @@ const bySourceKey = ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0);
 // One envelope folded into its source (sessions §3): reset and snapshot replace the units,
 // appended and delta add and replace, delta drops `gone`, unchanged does nothing; a vanished
 // source keeps its last units under "kept" and has none under "removed".
+// A vanished source opens a generation that archives only its manifest. Under "kept" its units
+// stay in the generation before it, which replay takes as current (spec §4.1), so they keep that
+// generation as `unitsGeneration`, the one derive's input names (sessions §2: a triple takes the
+// source's generation as the input gives it). A source read again after it vanished opens a
+// generation, as its first read did.
 function foldEnvelope(m, e) {
   const cur = m.get(e.source_key);
   if (e.source_gone) {
-    m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: e.policy === 'kept' ? new Map(cur?.units ?? []) : new Map() });
+    const kept = e.policy === 'kept';
+    m.set(e.source_key, {
+      generation: (cur?.generation ?? 0) + 1,
+      unitsGeneration: kept ? (cur?.unitsGeneration ?? cur?.generation) : undefined,
+      units: kept ? new Map(cur?.units ?? []) : new Map(),
+      gone: true,
+    });
     return;
   }
   const c = e.read.continuity;
-  if (!cur || c === 'reset' || c === 'snapshot') {
+  if (!cur || cur.gone || c === 'reset' || c === 'snapshot') {
     m.set(e.source_key, { generation: (cur?.generation ?? 0) + 1, units: new Map(e.read.units.map((u) => [u.unit_key, u])) });
   } else if (c === 'appended' || c === 'delta') {
     for (const u of e.read.units) cur.units.set(u.unit_key, u);
@@ -63,7 +74,7 @@ export function expectStates(passes, adapters) {
     }
     for (const [sk, S] of touched) {
       const adapter = adapters.adapterFor(S.harness);
-      const input = [...sources.get(sk)].sort(bySourceKey).map(([source_key, s]) => ({ source_key, generation: s.generation, complete: true, units: [...s.units.values()], gone: [] }));
+      const input = [...sources.get(sk)].sort(bySourceKey).map(([source_key, s]) => ({ source_key, generation: s.unitsGeneration ?? s.generation, complete: true, units: [...s.units.values()], gone: [] }));
       const d = adapter.derive({ ...S }, input, null);
       const st = state.get(sk) ?? { S, written: new Map(), current: new Set(), removed: new Set() };
       const live = rksOf(d.live);

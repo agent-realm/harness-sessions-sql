@@ -48,7 +48,7 @@ export const ENGINE_FAULTS = new Set([
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
   'manifest-whole-generation', 'encode-adapter-ver', 'child-stored-default', 'orig-sha-zero',
   'derived-stale', 'derived-other-session', 'replay-current-policy',
-  'native-leftovers', 'native-dropped', 'units-shifted', 'units-dropped',
+  'native-leftovers', 'native-dropped', 'units-shifted', 'units-dropped', 'kept-units-gone-generation',
 ]);
 
 // Fault `replay-current-policy`: the deployment's current vanish policy, the one its latest vanish
@@ -278,7 +278,10 @@ class ReferenceEngine {
       // in the manifest alike, so a replay agrees with the live state and both are wrong.
       const policy = F.has('policy-kept-as-removed') ? 'removed' : e.policy;
       currentPolicy = policy;
-      state = { generation, units: policy === 'kept' ? (c?.units ?? []) : [], gone: true, policy, position: '', mode: c?.mode ?? e.mode ?? '', progress };
+      // Kept, its units stay in the generation before it (replay's current one, §4.1), and derive's
+      // input names that generation: `unitsGeneration`.
+      const unitsGeneration = policy === 'kept' ? (c?.unitsGeneration ?? c?.generation) : undefined;
+      state = { generation, unitsGeneration, units: policy === 'kept' ? (c?.units ?? []) : [], gone: true, policy, position: '', mode: c?.mode ?? e.mode ?? '', progress };
       // A vanished source opens a generation with no read: its manifest's continuity is `reset`.
       manifest = { progress, continuity: 'reset', units: [], gone: [], source_gone: true, policy };
     } else {
@@ -355,9 +358,13 @@ class ReferenceEngine {
     const harness = w.S.harness;
     const adapter = this.adapters.adapterFor(harness);
     const d = this.adapters.describe(harness);
+    // Fault `kept-units-gone-generation`: a kept source's units named by the generation its
+    // vanishing opened, which archives only a manifest, not by the one that holds them (here and
+    // in replay). A live pass rewrites no row for a change of units alone, so a replay shows it.
+    const keptGone = this.faults.has('kept-units-gone-generation');
     const input = [...w.sources].sort(bySourceKey).map(([sourceKey, st]) => ({
       source_key: sourceKey,
-      generation: st.generation,
+      generation: keptGone ? st.generation : (st.unitsGeneration ?? st.generation),
       complete: true,
       units: st.units.map(([uk, sha]) => {
         const u = bodies.get(`${w.sk}${SEP}${unitKey(sourceKey, uk, sha)}`);
@@ -561,7 +568,7 @@ class ReferenceEngine {
       let meta = { adapter: d.adapter, adapter_ver: d.adapter_ver, model_version: d.model_version };
       for (const sources of steps) {
         const input = [...sources].sort(bySourceKey).map(([sourceKey, st]) => ({
-          source_key: sourceKey, generation: st.generation, complete: true, gone: [],
+          source_key: sourceKey, generation: this.faults.has('kept-units-gone-generation') ? st.generation : (st.unitsGeneration ?? st.generation), complete: true, gone: [],
           units: [...st.units].map(([uk, sha]) => {
             const u = bodies.get(unitKey(sourceKey, uk, sha));
             if (!u) throw new Error(`reference engine replay: unit ${sourceKey}@${uk} is not in the archive`);
@@ -626,7 +633,9 @@ class ReferenceEngine {
           // Fault `replay-current-policy`: the current setting, not the policy the manifest records.
           const recorded = F.has('replay-current-policy') && currentPolicy ? currentPolicy : (m.policy ?? 'removed');
           const policy = F.has('ignore-policy') ? 'removed' : recorded;
-          sources.set(row.source_key, { generation, units: policy === 'kept' ? new Map(prev?.units ?? []) : new Map() });
+          // Kept, the units are still the earlier generation's, and derive's input names it.
+          const unitsGeneration = policy === 'kept' ? (prev?.unitsGeneration ?? prev?.generation) : undefined;
+          sources.set(row.source_key, { generation, unitsGeneration, units: policy === 'kept' ? new Map(prev?.units ?? []) : new Map() });
         } else if (!prev || prev.generation !== generation || F.has('replay-last-manifest')) {
           sources.set(row.source_key, { generation, units: new Map(m.units) });
         } else {
@@ -634,7 +643,7 @@ class ReferenceEngine {
           for (const k of m.gone ?? []) prev.units.delete(k);
         }
       }
-      steps.push(new Map([...sources].map(([k, v]) => [k, { generation: v.generation, units: new Map(v.units) }])));
+      steps.push(new Map([...sources].map(([k, v]) => [k, { generation: v.generation, unitsGeneration: v.unitsGeneration, units: new Map(v.units) }])));
     }
     return steps;
   }
@@ -723,7 +732,7 @@ class ReferenceEngine {
       const sk = sessionKeyOf(r);
       if (!out.has(sk)) out.set(sk, new Map());
       const st = JSON.parse(r.state || '{}');
-      out.get(sk).set(r.source_key, { generation: Number(r.generation), progress: Number(r.progress), position: r.position, mode: r.mode, units: st.units ?? [], gone: !!st.gone, policy: st.policy });
+      out.get(sk).set(r.source_key, { generation: Number(r.generation), progress: Number(r.progress), position: r.position, mode: r.mode, units: st.units ?? [], gone: !!st.gone, policy: st.policy, unitsGeneration: st.units_generation ?? undefined });
     }
     return out;
   }
@@ -769,7 +778,8 @@ class ReferenceEngine {
         if (st.progress !== w.progress) continue;
         rows.push({
           ...w.S, source_key: sourceKey, mode: st.mode ?? '', position: st.position ?? '', generation: st.generation, progress: st.progress,
-          state: jcs({ units: st.units, gone: st.gone, policy: st.policy ?? null }), state_ver: Number(d.state_ver ?? 0),
+          // A kept vanished source also keeps the generation its units are in (fold).
+          state: jcs({ units: st.units, gone: st.gone, policy: st.policy ?? null, ...(st.unitsGeneration != null ? { units_generation: st.unitsGeneration } : {}) }), state_ver: Number(d.state_ver ?? 0),
           adapter: d.adapter, adapter_ver: statedAdapterVer(d.adapter_ver),
         });
       }

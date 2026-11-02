@@ -168,7 +168,7 @@ parts, one per case), and each part is its own row:
 | 18 | Redaction holds | engine | on the three sentinel fixtures, OpenCode's first user message (its text holds a planted value) deleted in a second pass: no row holds a planted value in the specification's columns (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6); a column the deployment adds (§3, derived columns) holds one only where a current record of the row's session holds it (in a removed version, the archive or the cursor: a record of the session, current or removed); and the values redacted on declared paths are in no table |
 | 19 | Database profile parity | engine | the same envelopes into ClickHouse and PostgreSQL give the same current `(identity, content_sha[, message_content_sha])` in every entity table, `legacy` rows left out (runs when both profiles are in the run) |
 | 20 | Native is declared (v1.1) | engine | after the broad scenario, every key of every `native`, `message_native` and `part_native` column is a path the harness's adapter declares in `describe()` for that record type, every such column equals the derived record's `native` as canonical JSON (`''` or null where it has none), and at least one row holds one |
-| 21 | Units resolve (v1.1) | engine | after the broad scenario, every triple of every `units` and `message_units` column names a unit of its session's archive, every such column equals the `units` of a record the kit expects for that key after some pass with the row's `content_sha` (`message_content_sha` for a part row: `units` is outside the sha, so a stale version is allowed), and at least one row holds one |
+| 21 | Units resolve (v1.1) | engine | after the broad scenario, and after a source vanishes under `kept` (live, and replayed from `session_units` alone; when the engine implements `kept`), every triple of every `units` and `message_units` column names a unit of its session's archive (a kept source's units stay in the generation before its vanishing, §4.1), every such column equals the `units` of a record the kit expects for that key after some pass with the row's `content_sha` (`message_content_sha` for a part row: `units` is outside the sha, so a stale version is allowed), and at least one row holds one |
 
 Each check runs its item as §8 of the specification's v1.1 words it, against the v1.1 DDL in
 [`schema/`](../schema/) (the reading view of §6, in `schema/*-views.sql`, is example 06's, not
@@ -189,7 +189,8 @@ make it fail:
   encoding, a null `child_stored` written as true, a missing `orig_sha256` written as `''`, a
   derived column that keeps a removed message's text or takes another session's, a replay that
   applies the current vanish policy instead of the one each manifest records, a `native` with an
-  undeclared key or none at all, `units` naming the next generation or none, and so on);
+  undeclared key or none at all, `units` naming the next generation or none, a kept source's
+  `units` naming the generation its vanishing opened, and so on);
 - **DDL faults** are a faulty implementation DDL, supplied through the reference engine's
   `createTables` as any engine's would be: a key column dropped, a registry turned into a closed
   list, the host check removed or unanchored, a time partition, a non-Nullable `ts` or counter, an

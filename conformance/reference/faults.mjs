@@ -152,4 +152,5 @@ export const FAULT_NOTES = {
   'engine:native-dropped': 'the native columns written empty',
   'engine:units-shifted': 'every units triple one generation ahead of its unit',
   'engine:units-dropped': 'the units columns written empty',
+  'engine:kept-units-gone-generation': "a kept source's units named by its vanishing's generation, which archives no unit",
 };

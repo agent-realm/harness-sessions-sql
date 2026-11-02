@@ -6,6 +6,23 @@ specification's: the first release, 1.0.0, is its v1.
 
 ## [Unreleased]
 
+- **Kit: a kept source's units name the generation that holds them.** A source that vanishes under
+  `kept` opens a generation that archives only its manifest; its units stay in the generation
+  before it, which replay takes as current (§4.1), and a record's `units` name that one (sessions
+  §2: a triple takes the source's generation as derive's input gives it). The kit's expectation
+  and the reference engine, live and in replay, named the vanishing's generation instead. Units
+  resolve did not see it, because it ran on the broad scenario alone, where no source vanishes.
+  - **Units resolve** also runs a `kept` vanish, judged live and after a replay from
+    `session_units` alone, when the engine implements `kept`; and a new reference-engine fault,
+    `kept-units-gone-generation`, is its positive control.
+  - **Its failures print their full count** (the first 20, then "… and N more"), no longer capped
+    at 50.
+  - In the kit's expectation, a source read again after it vanished opens a generation, as the
+    reference engine does. No scenario reads one yet.
+  - No specification, table, column or key changes.
+
+## [1.1.0] - 2026-11-02
+
 - **v1.1: native fields, unit pointers and a turns view**, from the proposal in
   [`docs/design/v1.1-native-fields-unit-pointers-turns.md`](docs/design/v1.1-native-fields-unit-pointers-turns.md).
   Additive: a v1 reader is unaffected.
@@ -68,5 +85,7 @@ of memhouse, the first production implementation, is in [§9](01-SESSIONS-SQL-SP
   the kit and the reviews raised against the specification, each with what the kit does about it;
   19 to 28 and 31 to 36 are open in v1.
 
+[Unreleased]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/agent-realm/harness-sessions-sql/releases/tag/v1.0.0
