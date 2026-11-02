@@ -16,7 +16,7 @@ working on this repo.
   the reference engine checked by the kit, and a session's turns and native fields read back, each
   README holding the output it prints.
 
-**Status: v1.1** (the turns view, plan); begun 2026-10-22.
+**Status: v1.1.1** (the turns view, plan); begun 2026-10-22.
 
 ## The dependency rule
 

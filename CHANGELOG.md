@@ -6,6 +6,22 @@ specification's: the first release, 1.0.0, is its v1.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-03
+
+- **Only the order of a source's generations is significant** (§4.1), after sessions v1.4.4. The
+  consumer numbers a source's generations: each one it opens is higher than every one before it,
+  and the first may be any number. A reader relies on their order and on a generation's identity
+  in the session's own archive, never on its value. Backward compatible: an engine that starts at
+  1 still conforms, and an archive whose sources start at 0 conforms without renumbering.
+  - **Units resolve** compares a triple's generation by its rank among the source's generations
+    in the engine's archive, manifests included, so the kit no longer requires the first one to
+    be 1. A triple that names another generation of the source than its unit's still fails.
+  - **The reference engine** takes a `firstGeneration` option (default 1). Two test engines use
+    it: one that numbers generations from 0, which the kit accepts, and the same with every triple
+    one generation ahead, which fails Units resolve.
+  - **The kit's docs** say that `SSQL_ADAPTERS` must name a source checkout of the
+    harness-session-adapters package for the fixture-based checks: the published npm package
+    ships no `fixtures/`.
 - **Kit: a kept source's units name the generation that holds them.** A source that vanishes under
   `kept` opens a generation that archives only its manifest; its units stay in the generation
   before it, which replay takes as current (§4.1), and a record's `units` name that one (sessions
@@ -19,7 +35,7 @@ specification's: the first release, 1.0.0, is its v1.
     at 50.
   - In the kit's expectation, a source read again after it vanished opens a generation, as the
     reference engine does. No scenario reads one yet.
-  - No specification, table, column or key changes.
+  - No table, column or key changes.
 
 ## [1.1.0] - 2026-11-02
 
@@ -85,7 +101,8 @@ of memhouse, the first production implementation, is in [§9](01-SESSIONS-SQL-SP
   the kit and the reviews raised against the specification, each with what the kit does about it;
   19 to 28 and 31 to 36 are open in v1.
 
-[Unreleased]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/agent-realm/harness-sessions-sql/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/agent-realm/harness-sessions-sql/releases/tag/v1.0.0

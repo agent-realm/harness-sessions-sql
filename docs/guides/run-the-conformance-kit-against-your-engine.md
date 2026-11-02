@@ -53,7 +53,8 @@ your module's path in its place.
 A value starting with `.` or `/` is a path, taken from the directory you run in; anything else is a
 package name. The fixture-based checks need
 `SSQL_ADAPTERS` to name a checkout of the harness-session-adapters package, as for
-[example 05](../../examples/05-full-blown/); without it they are skipped, with the reason.
+[example 05](../../examples/05-full-blown/); without it they are skipped, with the reason. A
+package name will not do for them: the published npm package ships no `fixtures/`.
 
 ## 3. Read the verdict
 

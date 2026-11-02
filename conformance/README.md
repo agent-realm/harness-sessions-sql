@@ -25,7 +25,7 @@ Node.js 24. One dependency, `pg`; ClickHouse is spoken over its HTTP interface w
 | `SSQL_PG_URL` | a PostgreSQL connection URL |
 | `SSQL_PREFIX` | the deployment prefix of every table (spec §3, physical names); default `conf_` |
 | `SSQL_ENGINE` | the engine under test, a module path or package name; default the [reference engine](reference/engine.mjs) |
-| `SSQL_ADAPTERS` | the harness-session-adapters package (`@agent-realm/harness-session-adapters`, `packages/harness-session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to a checkout of it, pinned to the package's release tag once it has one, or a package name |
+| `SSQL_ADAPTERS` | the harness-session-adapters package (`@agent-realm/harness-session-adapters`, `packages/harness-session-adapters` of [harness-skeleton](https://github.com/agent-realm/harness-skeleton)): a path to a checkout of it, pinned to the package's release tag once it has one, or a package name. The published npm package ships no `fixtures/`, and the kit's scenarios are built from them, so a run that checks an engine needs a source checkout: a package name loads the adapters without their fixtures |
 | `SSQL_TIMEOUT_MS` | how long one database request may take; default 300000 |
 
 A package name in `SSQL_ENGINE` or `SSQL_ADAPTERS` resolves from the kit's own folder (its
@@ -168,7 +168,7 @@ parts, one per case), and each part is its own row:
 | 18 | Redaction holds | engine | on the three sentinel fixtures, OpenCode's first user message (its text holds a planted value) deleted in a second pass: no row holds a planted value in the specification's columns (units read whole and decoded) unless the unit or record it was written from holds it (free text, sessions-model §4 rule 6); a column the deployment adds (§3, derived columns) holds one only where a current record of the row's session holds it (in a removed version, the archive or the cursor: a record of the session, current or removed); and the values redacted on declared paths are in no table |
 | 19 | Database profile parity | engine | the same envelopes into ClickHouse and PostgreSQL give the same current `(identity, content_sha[, message_content_sha])` in every entity table, `legacy` rows left out (runs when both profiles are in the run) |
 | 20 | Native is declared (v1.1) | engine | after the broad scenario, every key of every `native`, `message_native` and `part_native` column is a path the harness's adapter declares in `describe()` for that record type, every such column equals the derived record's `native` as canonical JSON (`''` or null where it has none), and at least one row holds one |
-| 21 | Units resolve (v1.1) | engine | after the broad scenario, and after a source vanishes under `kept` (live, and replayed from `session_units` alone; when the engine implements `kept`), every triple of every `units` and `message_units` column names a unit of its session's archive (a kept source's units stay in the generation before its vanishing, §4.1), every such column equals the `units` of a record the kit expects for that key after some pass with the row's `content_sha` (`message_content_sha` for a part row: `units` is outside the sha, so a stale version is allowed), and at least one row holds one |
+| 21 | Units resolve (v1.1) | engine | after the broad scenario, and after a source vanishes under `kept` (live, and replayed from `session_units` alone; when the engine implements `kept`), every triple of every `units` and `message_units` column names a unit of its session's archive (a kept source's units stay in the generation before its vanishing, §4.1), every such column equals the `units` of a record the kit expects for that key after some pass with the row's `content_sha` (`message_content_sha` for a part row: `units` is outside the sha, so a stale version is allowed), a triple's generation compared by its rank among the source's generations in the archive (only their order is significant, §4.1), and at least one row holds one |
 
 Each check runs its item as §8 of the specification's v1.1 words it, against the v1.1 DDL in
 [`schema/`](../schema/) (the reading view of §6, in `schema/*-views.sql`, is example 06's, not
@@ -204,14 +204,15 @@ must accept or a fault in an engine's own code the kit must catch:
   sort key with `toDate(ts)`; one that adds a column of its own to two tables; one whose DDL adds a
   derived column (`sessions.first_prompt`) it computes from the session's current records; one
   with a table of its own beside the §3 tables; one that keeps its cursor in a table of its own and
-  exposes it as `cursor()`;
+  exposes it as `cursor()`; one that numbers each source's generations from 0;
 - caught or not proven: one with no DDL (self-check rows); one whose own DDL lacks the host check;
   one with no legacy SQL; one with no DDL and a wrong legacy SQL; one that hides its cursor and
   ignores its later crash points (not proven), and one that exposes it and ignores them (fails);
   one whose derived column keeps a removed message's text, and one whose derived column takes
   another session's; one that keeps every vanished source and declares `vanishPolicies: ['kept']`
   (accepted, its removed parts n/a), and the same with no declaration (checked against both, so
-  its removed parts fail); two whose errors quote a URL with a password the kit was never given, which it must not print.
+  its removed parts fail); one that numbers generations from 0 and writes every units triple one
+  generation ahead (Units resolve fails); two whose errors quote a URL with a password the kit was never given, which it must not print.
 
 ## Plugging in an engine
 

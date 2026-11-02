@@ -1,6 +1,6 @@
 # harness-sessions-sql
 
-**Status: v1.1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run the v1 checks and does not pass every item yet. v1.1 adds columns for a record's native fields and the units it came from, and a reading view of a session's turns (plan).
+**Status: v1.1.1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run the v1 checks and does not pass every item yet. v1.1 adds columns for a record's native fields and the units it came from, and a reading view of a session's turns (plan); v1.1.1 states that only the order of a source's generations is significant.
 
 ## What it is
 
