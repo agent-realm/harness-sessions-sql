@@ -4,6 +4,13 @@ All notable changes to harness-sessions-sql are recorded here. The format follow
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers match the
 specification's: the first release, 1.0.0, is its v1.
 
+## [Unreleased]
+
+- **CI runs the conformance kit and the examples** against a disposable ClickHouse 26.8 and
+  PostgreSQL 16 on every pull request and push to `main` (`.github/workflows/conformance.yml`,
+  checks `kit` and `examples`), on GitHub-hosted runners, with no secrets. No table, column, key or
+  check changes.
+
 ## [1.0.1] - 2026-10-28
 
 - **The specification is renamed harness-sessions-sql**, with its repository, and cites the
