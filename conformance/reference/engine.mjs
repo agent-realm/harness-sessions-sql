@@ -93,12 +93,16 @@ class ReferenceEngine {
   // bytes in several chunks (§4.1 `chunk`), its raw split at character boundaries; 0, the
   // default, keeps every unit in one. `firstPrompt`, the reference's own option too: `'current'`
   // keeps the derived column `sessions.first_prompt` (see the header), which the deployment's DDL
-  // must have; null, the default, keeps none.
-  constructor({ profile, ns, adapters, faults = [], faultData = {}, chunkBytes = 0, firstPrompt = null }) {
+  // must have; null, the default, keeps none. `firstGeneration`, the number of a source's first
+  // generation (1, the default): only the order of generations is significant (sessions v1.4.4),
+  // so an engine may start anywhere.
+  constructor({ profile, ns, adapters, faults = [], faultData = {}, chunkBytes = 0, firstPrompt = null, firstGeneration = 1 }) {
     this.profile = profile;
     this.ns = ns;
     this.adapters = adapters;
     this.faults = new Set(faults);
+    if (!Number.isInteger(firstGeneration) || firstGeneration < 0) throw new Error(`firstGeneration ${firstGeneration} is not a whole number`);
+    this.firstGeneration = firstGeneration;
     for (const f of this.faults) if (!ENGINE_FAULTS.has(f)) throw new Error(`unknown engine fault ${f}`);
     this.faultData = faultData;
     this.name = name;
@@ -273,7 +277,7 @@ class ReferenceEngine {
     let units = [];
     let opens = true;
     if (e.source_gone) {
-      const generation = (c?.generation ?? 0) + 1;
+      const generation = c ? c.generation + 1 : this.firstGeneration;
       // Fault `policy-kept-as-removed`: a vanished source the consumer keeps is removed, live and
       // in the manifest alike, so a replay agrees with the live state and both are wrong.
       const policy = F.has('policy-kept-as-removed') ? 'removed' : e.policy;
@@ -291,7 +295,7 @@ class ReferenceEngine {
       let list;
       let generation;
       if (opens) {
-        generation = (c?.generation ?? 0) + 1;
+        generation = c ? c.generation + 1 : this.firstGeneration;
         list = r.units.map((u) => [u.unit_key, u.sha256]);
       } else {
         generation = c.generation;
@@ -605,7 +609,7 @@ class ReferenceEngine {
     const F = this.faults;
     if (!s.manifests.length) {
       const top = new Map();
-      for (const r of s.units) if ((top.get(r.source_key) ?? 0) < r.generation) top.set(r.source_key, r.generation);
+      for (const r of s.units) if (!top.has(r.source_key) || top.get(r.source_key) < r.generation) top.set(r.source_key, r.generation);
       const sources = new Map();
       for (const [sourceKey, g] of top) {
         const units = s.units.filter((r) => r.source_key === sourceKey && r.generation === g)

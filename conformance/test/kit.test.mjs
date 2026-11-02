@@ -401,6 +401,24 @@ test("vanish policies: an engine that declares ['kept'] gets the removed parts r
   }
   assert.equal(undeclared.status, 1);
 });
+test('generations: an engine that numbers them from 0 is accepted; the same engine naming the next generation fails Units resolve', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
+  // Only the order of a source's generations is significant (sessions v1.4.4, spec §4.1).
+  const zero = runKit(['--only', 'units-resolve,units-only,absences-replay'], withEngine('generation-base-zero.mjs'), 10 * 60 * 1000);
+  const ran = rows(zero).filter((x) => x.status !== 'not run');
+  assert.ok(ran.some((x) => x.id === 'units-resolve'), zero.stdout + zero.stderr);
+  for (const x of ran) assert.equal(x.status, 'pass', `${x.id} ${x.part} ${x.column}: ${x.details.join(' ')}`);
+  assert.equal(zero.status, 0, zero.stdout + zero.stderr);
+  // The same numbering with every triple one generation ahead: a starting number the kit accepts
+  // does not excuse a triple that names a generation its units are not in.
+  const shifted = runKit(['--only', 'units-resolve'], withEngine('generation-base-zero-shifted.mjs'), 10 * 60 * 1000);
+  const ran2 = rows(shifted).filter((x) => x.status !== 'not run');
+  assert.ok(ran2.length, shifted.stdout + shifted.stderr);
+  for (const x of ran2) {
+    assert.equal(x.status, 'fail', `${x.column}: ${x.status}`);
+    assert.match(x.details.join(' '), /names no unit of the session's archive|which no derivation of its content had/, x.column);
+  }
+  assert.equal(shifted.status, 1);
+});
 
 test('self-test: a replay that applies the current vanish policy, not the one each manifest records, fails Absences replay', { skip: !haveTargets && 'no SSQL_CH_URL or SSQL_PG_URL, or no SSQL_ADAPTERS' }, () => {
   const r = runKit(['--self-test', '--only', 'absences-replay', '--fault', 'engine:replay-current-policy'], process.env, 10 * 60 * 1000);

@@ -1,9 +1,10 @@
 # harness-sessions-sql — Specification
 
-**version:** v1.1
+**version:** v1.1.1
 **status:** the table shapes and semantics of v1, accepted. v1.1 adds five columns that hold a
 record's native fields and the units it came from (§4.2, §4.3), and a reading view of a session's
-turns (§6, plan); every addition is optional for a reader and additive. Under AGENTS.md rule 2, no table or
+turns (§6, plan); every addition is optional for a reader and additive. v1.1.1 states that only
+the order of a source's generations is significant (§4.1). Under AGENTS.md rule 2, no table or
 key is normative until a working implementation or a fixture test backs it. The conformance kit's
 fixture tests back every §8 item through its reference engine, on both database profiles.
 memhouse's capture engine is the first production implementation, and these shapes will be
@@ -232,6 +233,13 @@ Per raw unit:
 `unit_key` is the decimal byte offset for a stream, the rowid or KV key for a delta
 source, and the `source_key` for a snapshot. It is never empty: `unit_key = ''` is reserved for
 read manifests.
+
+**Generations: only their order is significant** (v1.1.1). The consumer numbers a source's
+generations (sessions v1.4.4): each generation it opens for a source (below: the first read, every
+`reset` or `snapshot`, a vanishing) is higher than every one before it, and the first may be any
+number. A reader relies only on that order and on a generation's identity within the session's own
+archive, never on its value: a `units` triple (§4.2) names the generation its unit is archived in,
+in the consumer's numbering.
 
 **Units only, verbatim.** A unit row of `session_units` is a unit as an adapter's `read` emitted
 it. The other rows there are read manifests (below), which the consumer writes. They are normal
