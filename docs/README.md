@@ -12,7 +12,10 @@ Guides:
 - [Read the current state](guides/read-the-current-state.md): `FINAL`, `argMax` with the filter in `HAVING`, PostgreSQL, and why other reads come and go.
 - [Add a column without breaking conformance](guides/add-a-column-without-breaking-conformance.md): what a deployment may add, what the kit accepts, and a `tenant` column with the kit green.
 
-No pages yet in `reference/` or `design/`.
+Design notes:
+- [Proposal for v1.1: native fields, unit pointers and a turns view](design/v1.1-native-fields-unit-pointers-turns.md): the fields no column maps, the way back from a row to its raw units, and one row per turn; a proposal, not yet part of the specification.
+
+No pages yet in `reference/`.
 
 Elsewhere in the repository:
 - [`examples/`](../examples/README.md): five runnable examples, in order, from one session written by hand in SQL to the reference engine checked by the conformance kit; each says what it shows, the spec sections it illustrates, and the output it prints.
