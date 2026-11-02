@@ -795,6 +795,13 @@ reading view of §6, which stays (plan) until it is measured on a house of reali
 database moves to v1.1 by adding the columns, with their defaults, and having its engine fill them;
 a legacy row converted under v1 keeps its `content_sha` (§4.8). Its two §8 items run in the kit,
 and the view in example 06, on both database profiles.
+On 2026-11-02, in this repository's CI (a GitHub-hosted runner; ClickHouse 26.8 and PostgreSQL
+16, both disposable), with this DDL and harness-session-adapters 1.1.0:
+- the v1.1 DDL and the reading view load on both database profiles;
+- the reference engine passes every §8 item on both database profiles, Native is declared and
+  Units resolve included, except the two legacy items on PostgreSQL, which do not apply there;
+- every control in the self-test makes its check fail, the four of the two new items included;
+- example 06 prints the same turns, the same `native` and the same raw line on both profiles.
 
 **The conformance kit** (`conformance/`) runs every §8 item against a ClickHouse or PostgreSQL
 target taken from the environment, and its self-test holds each check to the faults it exists to

@@ -79,7 +79,7 @@ The same on both profiles. The time goes to standard error, so it is not part of
 ```text
 one pass: 1 read(s) of claude-code/features
 session 0f5e1c2a-7b3d-4e8f-a9c1-2d3e4f5a6b7c, its turns (session_turns, §6):
-  turn  prompt_message_id                      started_at                ended_at                  messages  tool_calls  tool_errors  served_models
+  turn  prompt_message_id                       started_at                ended_at                  messages  tool_calls  tool_errors  served_models
   1     00000000-0000-4000-a000-000000000001    2026-01-05T10:00:01.000Z  2026-01-05T10:00:04.000Z  5         2           1            ["claude-opus-4-1"]
   2     00000000-0000-4000-a000-000000000005+1  2026-01-05T10:00:04.000Z  2026-01-05T10:00:04.000Z  1         0           0            []
   3     00000000-0000-4000-a000-000000000006    2026-01-05T10:00:05.000Z  2026-01-05T10:00:07.000Z  3         0           0            ["<synthetic>"]

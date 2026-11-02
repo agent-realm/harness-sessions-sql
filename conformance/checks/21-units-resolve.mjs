@@ -9,8 +9,11 @@
 // the passes, every current session and part row: each triple must name a unit of the session's
 // archive (any chunk of it), and the column must equal, in order, the `units` of a record the kit
 // expects for that key after some pass with the row's content_sha (message_content_sha for a part
-// row). An engine that writes a new version when only `units` move holds the latest; one that
-// writes only when `content_sha` moves may hold an earlier one; both pass. The scenario removes no
+// row). So the triples must resolve in the archive, as a reader's LEFT JOIN reads them (§6), and
+// need not be the latest derivation's: `units` is outside `content_sha` (sessions-model §2.7), and
+// a triple of an earlier generation still names the unit that produced the row's content. An
+// engine that writes a new version when only `units` move holds the latest; one that writes only
+// when `content_sha` moves may hold an earlier one; both pass. The scenario removes no
 // source, so no triple is exempt. Over the run, at least one row holds a triple, so the check
 // proves something.
 
