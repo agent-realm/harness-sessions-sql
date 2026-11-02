@@ -12,13 +12,14 @@ that runs it, and the output it prints.
 | 03 | [Records in, rows out](03-records-to-rows/) | synthetic sessions-model records mapped to rows by the reference mapping, written, and read with the common queries | both | no |
 | 04 | [Raw apart from derived](04-raw-and-derived/) | the archive of raw units and read manifests, and the entity tables rebuilt from it alone | both | no |
 | 05 | [Full-blown](05-full-blown/) | real adapters over fixture harness stores, the reference engine, the current state read back, and the conformance kit's report | both | yes |
+| 06 | [Turns, and a native field](06-turns-and-native/) | v1.1: a session's turns through the `session_turns` view (ClickHouse) or function (PostgreSQL), and a message's `native` field followed back to its raw line through its `units`; the view timed, indicatively | both | yes |
 
 ## Running them
 
 Every example takes its targets from the environment, with the conformance kit's variables
 ([`conformance/README.md`](../conformance/README.md)): `SSQL_CH_URL`, `SSQL_CH_USER` and
 `SSQL_CH_PASSWORD` for ClickHouse, `SSQL_PG_URL` for PostgreSQL, and `SSQL_ADAPTERS` for the
-session adapters (example 05). They reuse the kit's code by relative import, so they need Node.js
+session adapters (examples 05 and 06). They reuse the kit's code by relative import, so they need Node.js
 24 and the kit's one dependency:
 
 ```sh
@@ -45,8 +46,8 @@ SSQL_ADAPTERS=/path/to/harness-skeleton/packages/harness-session-adapters \
   npm test
 ```
 
-`SSQL_ADAPTERS` names a checkout of the harness-session-adapters package at version 1.0.0, harness-skeleton
-commit `5ab0659`: example 05 reads its `fixtures/`, and its expected output is that version's
+`SSQL_ADAPTERS` names a checkout of the harness-session-adapters package at version 1.1.0, harness-skeleton
+commit `e1e5900`: examples 05 and 06 read its `fixtures/`, and their expected output is that version's
 ([`05-full-blown/README.md`](05-full-blown/README.md) says how to get it).
 
 [`test.mjs`](test.mjs) runs each example once per profile that has a target, and checks that it
@@ -55,7 +56,7 @@ prints exactly its README's expected output (the fenced block on the line after
 
 - **The READMEs' markers.** A marker that does not parse, in any case, an unknown profile, or a
   README whose profiles are not those the example runs on fails the example, on the profile it
-  concerns. An example that reads the harness-session-adapters package (example 05) must name the version
+  concerns. An example that reads the harness-session-adapters package (examples 05 and 06) must name the version
   its output is from in a line `<!-- harness-session-adapters: <version> -->`; a missing or misspelled one
   fails it, and so does running it with another version in `SSQL_ADAPTERS`.
 - **Interrupts.** It interrupts one example per profile while it holds namespaces open (example 05

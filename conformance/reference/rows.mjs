@@ -17,14 +17,23 @@ export const IDENTITY = {
 };
 
 // Columns holding JSON: canonical JSON text in ClickHouse where the column is a String, jsonb in
-// PostgreSQL. ClickHouse keeps `aliases`, `message_aliases` and `statements` as arrays of tuples.
-// In a logical row, `args` and `setup` are canonical JSON text (or null), the others arrays.
+// PostgreSQL. ClickHouse keeps `aliases`, `message_aliases`, `statements` and the `units` columns as
+// arrays of tuples. In a logical row, `args`, `setup` and the `native` columns are canonical JSON
+// text (or null), the others arrays.
 export const JSON_COLUMNS = {
-  sessions: ['aliases', 'setup'],
-  session_parts: ['message_aliases', 'args'],
+  sessions: ['aliases', 'setup', 'native', 'units'],
+  session_parts: ['message_aliases', 'args', 'message_native', 'part_native', 'message_units'],
   session_links: ['statements'],
 };
-export const CH_STRING_JSON = { sessions: ['setup'], session_parts: ['args'] };
+export const CH_STRING_JSON = { sessions: ['setup', 'native'], session_parts: ['args', 'message_native', 'part_native'] };
+// The JSON-text columns that are null when absent (the others are arrays, `[]` when empty).
+export const NULLABLE_JSON = new Set(['args', 'setup', 'native', 'message_native', 'part_native']);
+
+// sessions-model §2.7 (v1.4): `native` as canonical JSON text, null where the record has none
+// (its adapter declares no path for the type); `units` as `{source_key, generation, unit_key}`
+// objects, `[]` where the record has none.
+const nativeText = (v) => (v === null || v === undefined ? null : jcs(v));
+const unitsOf = (u) => (u ?? []).map(([sourceKey, generation, unitKey]) => ({ source_key: sourceKey, generation, unit_key: unitKey }));
 
 export const rowKey = (table, row) => IDENTITY[table].map((c) => String(row[c] ?? '')).join('\u0000');
 
@@ -60,6 +69,7 @@ export function rowsOf(r, meta) {
           aliases: (r.aliases ?? []).map((a) => ({ id: s(a.id), kind: s(a.kind) })),
           fingerprint: r.fingerprint?.cmp_shas ?? [],
           setup: r.setup === null || r.setup === undefined ? null : jcs(r.setup),
+          native: nativeText(r.native), units: unitsOf(r.units),
           content_sha: r.content_sha,
           ...common,
         },
@@ -75,6 +85,7 @@ export function rowsOf(r, meta) {
         response_id: s(r.response_id),
         message_aliases: (r.aliases ?? []).map((a) => ({ id: s(a.id), kind: s(a.kind) })),
         cmp_sha: r.cmp_sha, message_content_sha: r.content_sha,
+        message_native: nativeText(r.native), message_units: unitsOf(r.units),
         ...common,
       };
       const parts = r.parts ?? [];
@@ -154,7 +165,7 @@ function anchorOf(a = {}) {
 }
 
 function partCols(p) {
-  const out = { part_id: s(p.part_id), kind: p.kind, text: s(p.text) };
+  const out = { part_id: s(p.part_id), kind: p.kind, text: s(p.text), part_native: nativeText(p.native) };
   if (p.kind === 'tool_call') Object.assign(out, { call_id: s(p.call_id), tool_name: s(p.name), args: p.args === undefined || p.args === null ? null : jcs(p.args), server: s(p.server) });
   if (p.kind === 'tool_result') {
     Object.assign(out, {

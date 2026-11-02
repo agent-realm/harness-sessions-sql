@@ -49,26 +49,26 @@ which checks the reference engine against the same target.
 - A ClickHouse target (`SSQL_CH_URL`, with `SSQL_CH_USER` and `SSQL_CH_PASSWORD`), a PostgreSQL
   target (`SSQL_PG_URL`), or both, from the environment as the conformance kit takes them. Point
   them only at a disposable deployment: the kit creates and drops namespaces of its own there.
-- **The session adapters**, `@agent-realm/harness-session-adapters` 1.0.0 (`packages/harness-session-adapters` of
+- **The session adapters**, `@agent-realm/harness-session-adapters` 1.1.0 (`packages/harness-session-adapters` of
   [harness-skeleton][harness-skeleton]), named by `SSQL_ADAPTERS` as the kit names them. Two ways
   to get them:
   - **From source**, which this example needs: it reads the package's `fixtures/` folder, which a
-    checkout has and a published package does not ship ([§9]). Version 1.0.0 is harness-skeleton
-    commit `5ab0659`:
+    checkout has and a published package does not ship ([§9]). Version 1.1.0 is harness-skeleton
+    commit `e1e5900`:
 
     ```sh
     git clone https://github.com/agent-realm/harness-skeleton
-    git -C harness-skeleton checkout 5ab0659
+    git -C harness-skeleton checkout e1e5900
     export SSQL_ADAPTERS=$PWD/harness-skeleton/packages/harness-session-adapters
     ```
 
-  - **From npm, once published:** `npm install @agent-realm/harness-session-adapters@1.0.0` in
+  - **From npm:** `npm install @agent-realm/harness-session-adapters@1.1.0` in
     `conformance/`, and `SSQL_ADAPTERS=@agent-realm/harness-session-adapters` (a package name resolves
     from the kit's folder). That loads the adapters, which is enough for the kit's checks that
     need no fixtures, but not for this example.
 
   Without `SSQL_ADAPTERS`, or with a package that has no `fixtures/`, the example is skipped (exit
-  3), with the reason. The expected output below is 1.0.0's: the examples' test fails the example,
+  3), with the reason. The expected output below is 1.1.0's: the examples' test fails the example,
   without running it, when `SSQL_ADAPTERS` names another version.
 - Node.js 24, and the kit's one dependency (`npm ci` in `conformance/`).
 
@@ -93,10 +93,10 @@ To check an engine of your own instead of the reference engine, run the kit with
 
 ## Expected output
 
-The counts are those of harness-session-adapters 1.0.0's fixtures; another version of the package can
+The counts are those of harness-session-adapters 1.1.0's fixtures; another version of the package can
 change them.
 
-<!-- harness-session-adapters: 1.0.0 -->
+<!-- harness-session-adapters: 1.1.0 -->
 
 <!-- expected: clickhouse -->
 ```text
@@ -132,6 +132,8 @@ the conformance kit, the reference engine, --profile clickhouse:
   17. Null is unknown: pass
   18. Redaction holds: pass
   19. Database profile parity: not run
+  20. Native is declared: pass
+  21. Units resolve: pass
   the kit exited 0
 ```
 
@@ -169,6 +171,8 @@ the conformance kit, the reference engine, --profile postgres:
   17. Null is unknown: pass
   18. Redaction holds: pass
   19. Database profile parity: not run
+  20. Native is declared: pass
+  21. Units resolve: pass
   the kit exited 0
 ```
 

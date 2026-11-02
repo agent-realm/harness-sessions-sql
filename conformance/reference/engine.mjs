@@ -29,7 +29,7 @@
 // Fault flags (`faults`) break one behaviour each. The kit's self-test runs every check against
 // its fault, which must make it fail: the checks' positive controls. They exist for that only.
 
-import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, rowKey, statedAdapterVer } from './rows.mjs';
+import { rowsOf, edgesOf, IDENTITY, JSON_COLUMNS, NULLABLE_JSON, CH_STRING_JSON, rowKey, statedAdapterVer } from './rows.mjs';
 import { jcs, jcsSha, sha256 } from '../lib/jcs.mjs';
 import { unitFromArchive } from '../lib/adapters.mjs';
 import { loadSchema } from '../lib/db.mjs';
@@ -48,6 +48,7 @@ export const ENGINE_FAULTS = new Set([
   'removed-rewrite', 'edge-needs-all', 'unredact-b64', 'host-merge-messages', 'fill-ts-lifecycle',
   'manifest-whole-generation', 'encode-adapter-ver', 'child-stored-default', 'orig-sha-zero',
   'derived-stale', 'derived-other-session', 'replay-current-policy',
+  'native-leftovers', 'native-dropped', 'units-shifted', 'units-dropped',
 ]);
 
 // Fault `replay-current-policy`: the deployment's current vanish policy, the one its latest vanish
@@ -383,6 +384,20 @@ class ReferenceEngine {
         if (table === 'session_parts' && row.kind === 'tool_result') row.exit_code ??= 0;
       }
       if (F.has('child-stored-default') && table === 'session_links') row.child_stored ??= true;
+      // Faults on the v1.1 columns (§4.2, §4.3). `native-leftovers`: a native column also carries
+      // a field no declared path names, as an engine that kept "everything left over" would.
+      // `native-dropped`: the native columns written empty. `units-shifted`: every triple one
+      // generation ahead of its unit. `units-dropped`: the units columns written empty.
+      for (const c of ['native', 'message_native', 'part_native']) {
+        if (!(c in row)) continue;
+        if (F.has('native-dropped')) row[c] = null;
+        else if (F.has('native-leftovers') && row[c] !== null) row[c] = jcs({ ...JSON.parse(row[c]), 'env.HOME': '/home/user' });
+      }
+      for (const c of ['units', 'message_units']) {
+        if (!(c in row)) continue;
+        if (F.has('units-dropped')) row[c] = [];
+        else if (F.has('units-shifted')) row[c] = row[c].map((u) => ({ ...u, generation: u.generation + 1 }));
+      }
       // Faults `part-sha-no-nulls` (both profiles) and `pg-skew` (PostgreSQL only): a part's
       // content_sha over the part without its null members, not the part as emitted (§4).
       if ((F.has('part-sha-no-nulls') || (F.has('pg-skew') && this.profile === 'postgres')) && table === 'session_parts' && row.part_id !== '') {
@@ -691,7 +706,7 @@ class ReferenceEngine {
   async present(table, where, params) {
     const rows = await this.ns.present(table, where?.where ?? where, where?.params ?? params);
     if (this.profile !== 'postgres') return rows;
-    for (const r of rows) for (const c of ['args', 'setup']) if (r[c] !== undefined && r[c] !== null) r[c] = jcs(r[c]);
+    for (const r of rows) for (const c of NULLABLE_JSON) if (r[c] !== undefined && r[c] !== null) r[c] = jcs(r[c]);
     return rows;
   }
 
@@ -936,8 +951,8 @@ const DROP = ['writer', 'ingested_at', 'captured_at', 'committed_at', 'ver'];
 function encodeClickHouse(table, row) {
   const r = { ...row };
   for (const c of DROP) delete r[c];
-  // `args` is a String with '' for none; `setup` a Nullable(String).
-  if (table === 'session_parts' && r.args === null) r.args = '';
+  // `args` and the `native` columns are a String with '' for none; `setup` a Nullable(String).
+  for (const c of CH_STRING_JSON[table] ?? []) if (c !== 'setup' && r[c] === null) r[c] = '';
   if (r.is_deleted !== undefined) r.is_deleted = num(r.is_deleted === true ? 1 : r.is_deleted === false ? 0 : r.is_deleted);
   return r;
 }
@@ -949,7 +964,7 @@ function encodePostgres(table, row) {
   // the array columns as arrays.
   for (const c of JSON_COLUMNS[table] ?? []) {
     if (r[c] === undefined) continue;
-    if (r[c] === null || r[c] === '') r[c] = c === 'args' || c === 'setup' ? null : '[]';
+    if (r[c] === null || r[c] === '') r[c] = NULLABLE_JSON.has(c) ? null : '[]';
     else if (typeof r[c] !== 'string') r[c] = JSON.stringify(r[c]);
   }
   if (r.is_deleted !== undefined) r.is_deleted = r.is_deleted === true || r.is_deleted === 1 || r.is_deleted === '1';

@@ -115,9 +115,12 @@ export function specLegacySha(text = specText()) {
 }
 
 // §4.8: the columns a legacy content_sha line leaves out, per table.
+// v1.1's columns are left out too: the line is v1's, so the known-answer vectors and every legacy
+// row converted before v1.1 keep their sha (§4.8).
 export const LEGACY_LINE_EXCLUDES = {
   common: ['content_sha', 'rev', 'is_deleted', 'removed', 'ingested_at', 'writer'],
-  session_parts: ['message_content_sha', 'cmp_sha'],
+  sessions: ['native', 'units'],
+  session_parts: ['message_content_sha', 'cmp_sha', 'message_native', 'message_units', 'part_native'],
 };
 
 // The columns of a table in the committed DDL of a profile (schema/<profile>.sql), in order,

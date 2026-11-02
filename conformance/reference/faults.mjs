@@ -148,4 +148,8 @@ export const FAULT_NOTES = {
   'engine:derived-stale': "a derived column (sessions.first_prompt) computed once and never again, so it keeps a removed message's text",
   'engine:derived-other-session': "a derived column (sessions.first_prompt) taken from another session's records",
   'engine:replay-current-policy': "replay applies the current vanish policy (the latest decision's) to every vanished source, not the policy each manifest records",
+  'engine:native-leftovers': 'a native column also carries a field no declared path names',
+  'engine:native-dropped': 'the native columns written empty',
+  'engine:units-shifted': 'every units triple one generation ahead of its unit',
+  'engine:units-dropped': 'the units columns written empty',
 };

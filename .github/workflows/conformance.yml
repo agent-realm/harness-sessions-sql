@@ -24,9 +24,9 @@ env:
   CH_IMAGE: clickhouse/clickhouse-server:26.8.36@sha256:d426d2f612e1e189c90f9a3f8dcd85a03c6851273833817a296bb327e63aa7a7
   PG_IMAGE: postgres:16.15@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
   # The harness-session-adapters package the kit and the examples read (SSQL_ADAPTERS), at the
-  # harness-skeleton commit of the version example 05's expected output names (1.0.0).
+  # harness-skeleton commit of the version the examples' expected output names (1.1.0).
   ADAPTERS_REPO: agent-realm/harness-skeleton
-  ADAPTERS_REF: 504c865f82b5e6a3dac2a6b1c97659494dec5880
+  ADAPTERS_REF: e1e590068f73e4aa612e342c435cc9a16d7ff427
 
 jobs:
   kit:
@@ -89,6 +89,17 @@ jobs:
       - name: Every example, on both database profiles, against its README's expected output
         working-directory: examples
         run: node test.mjs
+      - name: On failure, each example's whole output, to compare with its README
+        if: failure()
+        working-directory: examples
+        run: |
+          for d in [0-9][0-9]-*/; do
+            for p in clickhouse postgres; do
+              echo "::group::${d%/} --profile $p"
+              node "${d}example.mjs" --profile "$p" || true
+              echo "::endgroup::"
+            done
+          done
       - name: Remove the containers
         if: always()
         run: docker rm -f -v ssql-ch ssql-pg || true

@@ -82,6 +82,8 @@ CREATE TABLE sessions (
     aliases          jsonb    NOT NULL DEFAULT '[]',   -- [{id, kind}]
     fingerprint      text[]   NOT NULL DEFAULT '{}',   -- ordered cmp_sha
     setup            jsonb,                             -- sessions-model §2.1 setup; null unless recorded
+    native           jsonb,                             -- v1.1: the declared native fields (sessions-model §2.7); null when the record has none
+    units            jsonb    NOT NULL DEFAULT '[]',   -- v1.1: [{source_key, generation, unit_key}] (sessions-model §2.7)
     content_sha      char(64) NOT NULL,
     adapter          text     NOT NULL,
     adapter_ver      text     NOT NULL,
@@ -123,6 +125,8 @@ CREATE TABLE session_parts (
     message_aliases      jsonb NOT NULL DEFAULT '[]',
     cmp_sha              char(64) NOT NULL,
     message_content_sha  char(64) NOT NULL,
+    message_native       jsonb,                     -- v1.1: the message's `native` (sessions-model §2.7); null when none
+    message_units        jsonb NOT NULL DEFAULT '[]',  -- v1.1: the message's `units`
     kind                 text NOT NULL,
     text                 text NOT NULL DEFAULT '',
     call_id              text NOT NULL DEFAULT '',
@@ -153,6 +157,7 @@ CREATE TABLE session_parts (
     native_type          text NOT NULL DEFAULT '',
     part_source          text NOT NULL DEFAULT '',  -- the part's own source, '' = its message's
     part_state           text NOT NULL DEFAULT '',  -- the part's own state, '' = its message's
+    part_native          jsonb,                     -- v1.1: the part's `native` (sessions-model §2.7); null when none
     content_sha          char(64) NOT NULL,
     adapter              text NOT NULL,
     adapter_ver          text NOT NULL,

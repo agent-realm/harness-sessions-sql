@@ -100,12 +100,12 @@ Look for: generation 2 opening at the rewind, the removed versions of `m-3` and 
 [Example 05](../../examples/05-full-blown/) reads three fixture harness stores through the real
 session adapters, writes them with the reference engine, reads the current state back, and runs
 the conformance kit against the same target. It needs a checkout of the harness-session-adapters package
-at 1.0.0, named by `SSQL_ADAPTERS` (its README gives both ways to get the package); here, cloned
+at 1.1.0, named by `SSQL_ADAPTERS` (its README gives both ways to get the package); here, cloned
 beside this repository:
 
 ```sh
 git clone https://github.com/agent-realm/harness-skeleton ../harness-skeleton
-git -C ../harness-skeleton checkout 5ab0659
+git -C ../harness-skeleton checkout e1e5900
 export SSQL_ADAPTERS=$PWD/../harness-skeleton/packages/harness-session-adapters
 node examples/05-full-blown/example.mjs --profile clickhouse
 ```
@@ -121,6 +121,21 @@ node conformance/run.mjs
 Look for the verdict on the last line, `exit 0: … row(s) checked`. Read [§5 Writing][s5] and
 [§8 Conformance][s8]. To check an engine of your own, see
 [Run the conformance kit against your engine](../guides/run-the-conformance-kit-against-your-engine.md).
+
+## 7. Read a session's turns, and a field back to its raw line (v1.1)
+
+[Example 06](../../examples/06-turns-and-native/) writes one fixture Claude Code session with the
+reference engine, loads the reading view of §6 (`schema/clickhouse-views.sql`), and reads the
+session's turns through it. Then it takes one message's `message_native` and follows its
+`message_units` back to the raw line in `session_units`:
+
+```sh
+node examples/06-turns-and-native/example.mjs --profile clickhouse
+```
+
+Look for: four turns, the first with two tool calls and one tool error; a `message_native` holding
+`message.stop_reason` `tool_use`; and the raw line holding the same value. Read
+[§4.3 `session_parts`][s43] and [§6 Reading][s6].
 
 [pair]: ../../conformance/README.md#a-disposable-pair
 [s2]: ../../01-SESSIONS-SQL-SPEC.md#2-core-principles
