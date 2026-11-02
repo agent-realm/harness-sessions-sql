@@ -75,6 +75,14 @@ session adapters ──produce──▶ sessions-model records ──mapped by�
     maintainer; history is never rewritten to clear it.
 - Tests that need a database take their target from the environment, so the same suite runs
   against any disposable ClickHouse or PostgreSQL deployment.
+- **CI against both database profiles:** `.github/workflows/conformance.yml` runs the kit (its own
+  tests, every check, the self-test; check `kit`) and the examples (check `examples`) on every pull
+  request and every push to `main`. Each job starts its own ClickHouse and PostgreSQL with
+  `scripts/ci-databases.sh`: images pinned by digest, a password generated and masked for that job,
+  ports on 127.0.0.1, both removed at the end. It reads the session adapters from a harness-skeleton
+  checkout pinned in the workflow (`ADAPTERS_REF`), the version the examples' expected output names.
+  - GitHub-hosted runners only, `contents: read`, no secrets, never `pull_request_target`.
+  - A time it prints is indicative: a shared runner, not a house of realistic size.
 - **The examples:** `npm test` in `examples/` runs every example against those targets and checks
   its output against the expected output in its README (`examples/README.md`).
 - Use throwaway containers only with `docker rm -f -v`.
