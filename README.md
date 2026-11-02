@@ -1,6 +1,6 @@
 # harness-sessions-sql
 
-**Status: v1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run it and does not pass every item yet.
+**Status: v1.1.** The spec and both database profiles' DDL are written, and the DDL loads in both engines. The conformance kit runs the spec's checks; its reference engine passes them on both database profiles. memhouse, the first production implementation, has run the v1 checks and does not pass every item yet. v1.1 adds columns for a record's native fields and the units it came from, and a reading view of a session's turns (plan).
 
 ## What it is
 
@@ -38,8 +38,8 @@ standard of its own, beside two others:
 
 1. **The standard:** [`01-SESSIONS-SQL-SPEC.md`](01-SESSIONS-SQL-SPEC.md): tables, keys, revisions and tombstones, writing and reading, the open points, conformance.
 2. **The tutorial:** [From an empty database to a conforming store](docs/tutorials/from-empty-database-to-conforming-store.md): one path through the examples, from loading the DDL to the conformance kit's verdict.
-3. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql).
-4. **The examples:** [`examples/README.md`](examples/README.md): five runnable examples, from one session written by hand in SQL to the reference engine checked by the conformance kit.
+3. **The DDL:** [`schema/clickhouse.sql`](schema/clickhouse.sql) (the normative database profile) and [`schema/postgres.sql`](schema/postgres.sql); the reading view of a session's turns in [`schema/clickhouse-views.sql`](schema/clickhouse-views.sql) and [`schema/postgres-views.sql`](schema/postgres-views.sql), loaded after them.
+4. **The examples:** [`examples/README.md`](examples/README.md): six runnable examples, from one session written by hand in SQL to the reference engine checked by the conformance kit, and a session's turns and native fields read back.
 5. **Conformance:** [`conformance/README.md`](conformance/README.md): the checks, and how to run them against a ClickHouse or PostgreSQL target taken from the environment.
 
 ## Where next

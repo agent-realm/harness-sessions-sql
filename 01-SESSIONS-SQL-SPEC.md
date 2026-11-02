@@ -1,7 +1,9 @@
 # harness-sessions-sql — Specification
 
-**version:** v1
-**status:** the table shapes and semantics of v1, accepted. Under AGENTS.md rule 2, no table or
+**version:** v1.1
+**status:** the table shapes and semantics of v1, accepted. v1.1 adds five columns that hold a
+record's native fields and the units it came from (§4.2, §4.3), and a reading view of a session's
+turns (§6, plan); every addition is optional for a reader and additive. Under AGENTS.md rule 2, no table or
 key is normative until a working implementation or a fixture test backs it. The conformance kit's
 fixture tests back every §8 item through its reference engine, on both database profiles.
 memhouse's capture engine is the first production implementation, and these shapes will be
@@ -10,7 +12,8 @@ any other in v2.
 **provides:** the `harness-sessions-sql` mapping: how session records are kept in SQL.
 **consumes:**
 [`sessions-model`][sessions-model] v1.3 (the records) and
-[`sessions`][sessions] v1.3 (the seam), or any later v1.x. Its ClickHouse database profile uses common conventions:
+[`sessions`][sessions] v1.3 (the seam), or any later v1.x; the v1.1 columns hold the records'
+`native` and `units` (sessions-model v1.4.3, §2.7). Its ClickHouse database profile uses common conventions:
 ReplacingMergeTree versioned by `rev` with an `is_deleted` flag, `DateTime64` in UTC, and a
 server-stamped `writer` column.
 
@@ -316,7 +319,23 @@ The fields of sessions-model §2.1:
 - `aliases`: an array of `(id, kind)`;
 - `fingerprint`: the ordered `cmp_shas`;
 - `setup`: the session's setup as JSON, or null (sessions-model §2.1): canonical JSON text in
-  ClickHouse, `jsonb` in PostgreSQL, as `args` is.
+  ClickHouse, `jsonb` in PostgreSQL, as `args` is;
+- `native` (v1.1): the record's `native` (sessions-model §2.7), the values of the harness store's
+  own fields at the paths the adapter declares in `describe()`, keyed by path. Canonical JSON text
+  in ClickHouse, `''` where the record has none; `jsonb` in PostgreSQL, null where it has none.
+  `native` is part of the record, so it is inside `content_sha`;
+- `units` (v1.1): the record's `units` (sessions-model §2.7), the `(source_key, generation,
+  unit_key)` triples of the units its own fields came from, in the record's order. An array of
+  named tuples in ClickHouse; a `jsonb` array of `{source_key, generation, unit_key}` objects in
+  PostgreSQL; `[]` where the record has none.
+  - **Outside `content_sha`.** sessions-model §2.7 keeps `units` out of `content_sha`, so a change
+    of `units` alone, such as a reset that re-reads the same lines under a new generation, need not
+    write a new version. An engine may write one, or keep the version it has: a triple naming an
+    earlier generation stays valid, because `session_units` keeps that generation's units and they
+    produced the content the row holds.
+  - **A slot, not a version.** A triple names a slot of `session_units`. Where a snapshot or delta
+    source keeps several versions of one slot, a reader takes the latest archived version at or
+    before the record's revision (sessions-model §2.7), as §6 says.
 
 ### 4.3 `session_parts`
 
@@ -328,7 +347,9 @@ Message fields:
   null (sessions-model §2.2: a tool result, a sender the harness store does not record), stored as
   `''` like every absent string;
 - `ts`, `requested_model`, `served_model`, `effort`, `response_id`;
-- `message_aliases`, `cmp_sha`, `message_content_sha`.
+- `message_aliases`, `cmp_sha`, `message_content_sha`;
+- `message_native`, `message_units` (v1.1): the message's `native` and `units`, as `native` and
+  `units` are in §4.2.
 
 Part fields:
 - `part_id` and `part_index` (native order);
@@ -347,7 +368,9 @@ Part fields:
 - `level`, `native_type`;
 - `part_source`, `part_state`: a part's own `source` and `state`, where they differ from its
   message's (sessions-model §2.3: an injected part in a user's message, a part a revert hides
-  inside a message that stays); `''` where the part has none of its own.
+  inside a message that stays); `''` where the part has none of its own;
+- `part_native` (v1.1): the part's own `native`, as `native` is in §4.2. A part has no `units`:
+  its message's are its own.
 
 A message-level change revises every part row of that message at the new `rev`. A row the revised
 message no longer has gets a removed version, as a key that left `live` does (principle 3): a
@@ -467,7 +490,9 @@ keep a consumer's history in the harness-sessions-sql tables while they cannot b
     always converts to the same sha. It is the lowercase sha256 hex of one TabSeparated line:
     the row's columns, in this specification's DDL order for that table, leaving out
     `content_sha`, `rev`, `is_deleted`, `removed`, `ingested_at` and `writer` (and any column a
-    deployment adds; in `session_parts`, also `message_content_sha` and `cmp_sha`), each in ClickHouse's TabSeparated text form (NULL as `\N`; tab, newline
+    deployment adds; in `session_parts`, also `message_content_sha` and `cmp_sha`; and v1.1's
+    columns, `native` and `units` in `sessions`, `message_native`, `message_units` and
+    `part_native` in `session_parts`, so a row converted under v1 keeps its sha), each in ClickHouse's TabSeparated text form (NULL as `\N`; tab, newline
     and backslash escaped as `\t`, `\n`, `\\`), joined by tabs, without the trailing newline. In
     ClickHouse: `lower(hex(SHA256(trimRight(formatRow('TabSeparated', <columns>), '\n'))))`.
     - **What pins the bytes.** The conversion sets these to their defaults explicitly:
@@ -602,6 +627,34 @@ lists it in `live`.
   best-effort; the archive is the guaranteed path.
 - **A session, whole:** join the entity tables on the session key. No harness and no adapter is
   needed to read it.
+- **A record's raw units (v1.1):** join its `units` (`sessions.units`,
+  `session_parts.message_units`, §4.2) to `session_units` on the session key and the triple, with
+  a `LEFT JOIN`: under the `removed` vanish policy (§4.1) a removed source's units are gone, and a
+  triple of a record written before that names nothing. Where a slot holds several versions (a
+  snapshot or delta source), the record's is the latest archived at or before the record's
+  revision, by ingest order. Example 06 reads a message's line this way, on both database
+  profiles.
+- **A session's turns (v1.1, plan):** `session_turns`, a parameterized view in ClickHouse
+  ([`schema/clickhouse-views.sql`](schema/clickhouse-views.sql)) and a SQL function of the same
+  name and shape in PostgreSQL ([`schema/postgres-views.sql`](schema/postgres-views.sql)), each
+  loaded after the tables. Its parameters are the session key, and it returns one row per turn:
+  `turn`, `prompt_message_id`, `started_at`, `ended_at`, `messages`, `tool_calls`, `tool_errors`,
+  `served_models`.
+  - **A turn** starts at a message a person sent in the main conversation (`role = 'user'`,
+    `source = 'user'`, `agent_id = ''`) and runs to the next one, in `(order_key, message_id)`
+    order, compared as bytes; messages before the first prompt are turn 0, whose
+    `prompt_message_id` is `''` (ClickHouse) or null (PostgreSQL). `steering` and `automated`
+    messages start no turn.
+  - **What it reads:** current part rows (not deleted, not removed, `state = 'current'`, a part's
+    own `part_state` `''` or `current`), on the active branch where the harness store keeps
+    branches (`on_active_branch` true or null). `tool_errors` counts tool results with `is_error`
+    true; `served_models` is the distinct non-empty `served_model`s, in byte order. `started_at`
+    and `ended_at` are null where the harness store keeps no time (`ts_source = 'none'`).
+  - **Usage per turn** is left out: `session_usage` anchors usage at several granularities
+    (sessions-model §2.4), and a join that counts each usage once per turn is a question of its
+    own.
+  - **(plan)** until it is measured on a house of realistic size. Example 06 runs it on both
+    database profiles over a fixture session, and times it, indicatively.
 
 ## 7. Cursors and `rev`
 
@@ -615,7 +668,8 @@ them.
 
 ## 8. Conformance
 
-A database conforms to `harness-sessions-sql` v1 when every item below holds. An item marked
+A database conforms to `harness-sessions-sql` v1.1 when every item below holds, and to v1 when
+every item not marked (v1.1) holds. An item marked
 **(ClickHouse database profile)** applies to that database profile only, and does not apply to a
 PostgreSQL one.
 
@@ -715,6 +769,17 @@ is what a consumer holds after a `read`, or after deciding on a vanished source.
       current state, compared as sets of `(key, content_sha)`, with `message_content_sha` added
       for `session_parts`. `legacy` rows are left out: they exist only in a ClickHouse database
       profile (§4.8).
+- [ ] **Native is declared (v1.1):** every key in a `native` column (`sessions.native`,
+      `session_parts.message_native` and `part_native`) is a path the harness's adapter declares
+      in `describe()` for that record type (session, message, part), and the column holds the
+      record's `native` as the adapter derived it: canonical JSON, or nothing (`''`, null) where
+      the record has none.
+- [ ] **Units resolve (v1.1):** every `units` triple of a current row (`sessions.units`,
+      `session_parts.message_units`) names a unit of its own session in `session_units`, by
+      `source_key`, `generation` and `unit_key`, unless that source was removed under the
+      `removed` vanish policy (§4.1). The column holds the `units` of a derivation of the content
+      the row holds: the current record's, or, because `units` is outside `content_sha` (§4.2),
+      an earlier derivation's with the same `content_sha`.
 
 ## 9. Status
 
@@ -723,6 +788,20 @@ v1.3 seam delivers them, and stays valid under any later v1.x. The fixtures
 are those of the harness-session-adapters package (`packages/harness-session-adapters` in [agent-realm/harness-skeleton](https://github.com/agent-realm/harness-skeleton), package name `@agent-realm/harness-session-adapters`), under `fixtures/<harness>/<case>/`: harness stores, captured and scrubbed or synthetic, each with
 its reviewed golden. A conformance run reads them from a checkout of the package, because a
 package as packed for npm ships no `fixtures/`.
+
+**v1.1.** It adds the columns of §4.2 and §4.3 that hold the `native` and `units` of
+sessions-model v1.4.3 (§2.7), which harness-session-adapters 1.1.0 emits, and the `session_turns`
+reading view of §6, which stays (plan) until it is measured on a house of realistic size. A v1
+database moves to v1.1 by adding the columns, with their defaults, and having its engine fill them;
+a legacy row converted under v1 keeps its `content_sha` (§4.8). Its two §8 items run in the kit,
+and the view in example 06, on both database profiles.
+On 2026-11-02, in this repository's CI (a GitHub-hosted runner; ClickHouse 26.8 and PostgreSQL
+16, both disposable), with this DDL and harness-session-adapters 1.1.0:
+- the v1.1 DDL and the reading view load on both database profiles;
+- the reference engine passes every §8 item on both database profiles, Native is declared and
+  Units resolve included, except the two legacy items on PostgreSQL, which do not apply there;
+- every control in the self-test makes its check fail, the four of the two new items included;
+- example 06 prints the same turns, the same `native` and the same raw line on both profiles.
 
 **The conformance kit** (`conformance/`) runs every §8 item against a ClickHouse or PostgreSQL
 target taken from the environment, and its self-test holds each check to the faults it exists to
@@ -741,7 +820,8 @@ development, on ClickHouse 26.8:
   leaves open: a crash, then a re-run that reads other content;
 - two parts of Absences replay do not apply to it (n/a), because it declares only the vanish
   policies it uses (§8);
-- Database profile parity was not run: memhouse has a ClickHouse database profile only.
+- Database profile parity was not run: memhouse has a ClickHouse database profile only;
+- v1.1's two items were not run: they were added after this run.
 
 No production implementation passes every item yet, so the pieces marked (plan) still wait for one.
 Per the empirical-first rule, these shapes are corrected to match what it proves out: under

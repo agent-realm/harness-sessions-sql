@@ -8,13 +8,15 @@ working on this repo.
 - **harness-sessions-sql**: the reference for keeping agent-harness sessions in a database. It maps the
   records of sessions-model v1 to tables, keys, revisions and deletions.
 - **Database profiles**: ClickHouse (normative) and Postgres, over the same logical tables. Both are
-  drafted in `schema/`.
+  drafted in `schema/`, with the reading view of a session's turns in `schema/*-views.sql`
+  (v1.1), loaded after the tables.
 - **A conformance kit** (`conformance/`) that proves an implementation of the mapping, run against
   a ClickHouse or PostgreSQL target taken from the environment.
-- **Examples** (`examples/`): five runnable examples, from one session written by hand in SQL to
-  the reference engine checked by the kit, each README holding the output it prints.
+- **Examples** (`examples/`): six runnable examples, from one session written by hand in SQL to
+  the reference engine checked by the kit, and a session's turns and native fields read back, each
+  README holding the output it prints.
 
-**Status: v1**; begun 2026-10-22.
+**Status: v1.1** (the turns view, plan); begun 2026-10-22.
 
 ## The dependency rule
 

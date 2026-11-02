@@ -95,6 +95,8 @@ CREATE TABLE sessions
     aliases          Array(Tuple(id String, kind LowCardinality(String))),
     fingerprint      Array(FixedString(64)),           -- ordered cmp_sha of the current line
     setup            Nullable(String),                 -- canonical JSON of sessions-model §2.1 setup; null unless recorded
+    native           String DEFAULT '',                -- v1.1: canonical JSON of the declared native fields (sessions-model §2.7); '' when the record has none
+    units            Array(Tuple(source_key String, generation UInt32, unit_key String)),  -- v1.1: the raw units its own fields came from (sessions-model §2.7)
     content_sha      FixedString(64),
     adapter          LowCardinality(String),
     adapter_ver      LowCardinality(String),
@@ -140,6 +142,8 @@ CREATE TABLE session_parts
     message_aliases      Array(Tuple(id String, kind LowCardinality(String))),
     cmp_sha              FixedString(64),
     message_content_sha  FixedString(64),
+    message_native       String DEFAULT '',       -- v1.1: the message's `native` (sessions-model §2.7), canonical JSON; '' when none
+    message_units        Array(Tuple(source_key String, generation UInt32, unit_key String)),  -- v1.1: the message's `units`
     -- part columns
     kind                 LowCardinality(String),  -- text | reasoning | tool_call | tool_result | attachment | summary | error | notice | none
     text                 String DEFAULT '' CODEC(ZSTD(3)),
@@ -171,6 +175,7 @@ CREATE TABLE session_parts
     native_type          LowCardinality(String) DEFAULT '',
     part_source          LowCardinality(String) DEFAULT '',  -- the part's own source, '' = its message's
     part_state           LowCardinality(String) DEFAULT '',  -- the part's own state, '' = its message's
+    part_native          String DEFAULT '',       -- v1.1: the part's `native` (sessions-model §2.7), canonical JSON; '' when none
     content_sha          FixedString(64),
     adapter              LowCardinality(String),
     adapter_ver          LowCardinality(String),

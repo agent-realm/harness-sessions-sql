@@ -229,7 +229,7 @@ export function norm(v) {
 // A plain INSERT of rows given as logical values, for the database checks (no engine involved).
 // ClickHouse gets JSONEachRow with its default settings, so what a column does with a null is
 // the column's own behaviour; PostgreSQL gets a parameterised INSERT, its jsonb values as text.
-const PG_JSON = new Set(['aliases', 'setup', 'message_aliases', 'args', 'statements']);
+const PG_JSON = new Set(['aliases', 'setup', 'message_aliases', 'args', 'statements', 'native', 'units', 'message_native', 'part_native', 'message_units']);
 export async function insertRows(ns, logical, rows) {
   if (ns.profile === 'clickhouse') {
     await ns.client.insert(ns.t(logical), rows, { settings: { input_format_null_as_default: 1 } });
