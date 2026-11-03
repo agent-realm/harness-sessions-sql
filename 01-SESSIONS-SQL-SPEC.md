@@ -819,17 +819,47 @@ DDL, on ClickHouse 26.8 and PostgreSQL 16, both disposable:
   on PostgreSQL, which do not apply there (§8);
 - every control in the self-test makes its check fail.
 
-**Production implementations.** memhouse's capture engine is the first. On 2026-10-27, with the kit
-of harness-sessions-sql 96dcb3f (its kit code is unchanged since), memhouse's 0.20 line, still in
-development, on ClickHouse 26.8:
-- every §8 item that applies to it and was run passes, except Crash-safe, whose remaining failures
-  are the case that
+**Production implementations.** memhouse's capture engine is the first. On 2026-11-03, memhouse
+0.20.2 ran the kit of v1.1.1 with harness-session-adapters 1.1.0, against ClickHouse 26.7 and
+ClickHouse 25.11, each disposable, in a 4-core lab container. Both gave the same result:
+- 24 rows pass, Native is declared and Units resolve included. Units resolve judged 1170 triples:
+  the broad scenario's 1060, and 55 for a source that vanishes under `kept`, live and again after
+  a replay from `session_units` alone;
+- one fails, Crash-safe, in the case that
   [SPEC-QUESTIONS.md, question 20](conformance/SPEC-QUESTIONS.md#more-points-the-kit-had-to-settle)
-  leaves open: a crash, then a re-run that reads other content;
+  leaves open: a crash, then a re-run that reads other content. The live state equals a clean
+  run's. A replay from the archive the crashed pass left holds one `session_parts` row more: a part
+  that only the crashed, uncommitted read delivered;
 - two parts of Absences replay do not apply to it (n/a), because it declares only the vanish
   policies it uses (§8);
-- Database profile parity was not run: memhouse has a ClickHouse database profile only;
-- v1.1's two items were not run: they were added after this run.
+- Database profile parity was not run: memhouse has a ClickHouse database profile only.
+
+memhouse numbers each source's generations from 0, which §4.1 allows from v1.1.1: only their
+order is significant. An earlier run, on 2026-10-27, with the 0.20 line still in development, had
+the same Crash-safe failure and ran no v1.1 item.
+
+**`session_turns` at size (ClickHouse, indicative).** The same run timed memhouse's ClickHouse form
+of the view (§6) on a synthetic house:
+- 2,000,000 `session_parts` rows in 2000 sessions;
+- its long session has 40,000 rows and 667 turns, and its median one 980 rows and 17 turns;
+- 20 runs each, before and after `OPTIMIZE … FINAL`, timed from `system.query_log`.
+
+The times come from one 4-core lab container and are indicative only:
+
+| ClickHouse | session | median ms, unmerged / merged | p95 ms, unmerged / merged | read_rows, unmerged / merged |
+|---|---|---|---|---|
+| 26.7 | long | 48 / 31 | 67 / 38 | 80896 / 80896 |
+| 26.7 | median | 37 / 18 | 50 / 32 | 8192 / 3072 |
+| 25.11 | long | 48 / 54 | 68 / 60 | 80896 / 80896 |
+| 25.11 | median | 34 / 23 | 41 / 35 | 8192 / 3072 |
+
+- **Pruning:** `read_rows` stays near the session's own size on both lines, so the filter on the
+  sort-key prefix prunes.
+- **Disk:** `session_parts` took 2288 MiB on disk on 26.7 (2218 merged) and 3797 MiB on 25.11
+  (3798 merged), for the same rows.
+  - The house's text is random, so both sizes are upper bounds.
+  - The 25.11 difference is not explained. The view does not read that text.
+- **PostgreSQL:** its form of the view was not measured at size, so `session_turns` stays (plan).
 
 No production implementation passes every item yet, so the pieces marked (plan) still wait for one.
 Per the empirical-first rule, these shapes are corrected to match what it proves out: under
