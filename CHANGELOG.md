@@ -6,6 +6,12 @@ specification's: the first release, 1.0.0, is its v1.
 
 ## [Unreleased]
 
+- **Status (§9): memhouse 0.20.2 against v1.1.1**, on ClickHouse 26.7 and 25.11: 24 rows pass,
+  Native is declared and Units resolve included; Crash-safe fails in the case SPEC-QUESTIONS.md
+  question 20 leaves open; two Absences replay parts are n/a. Also `session_turns` timed on
+  ClickHouse over 2,000,000 rows, as indicative numbers. PostgreSQL's form is not measured at
+  size, so it stays (plan). No specification, table, column or key changes.
+
 ## [1.1.1] - 2026-11-03
 
 - **Only the order of a source's generations is significant** (§4.1), after sessions v1.4.4. The
